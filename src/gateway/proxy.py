@@ -51,13 +51,10 @@ def _extract_usage_from_chunk(chunk_data: dict) -> tuple[int, int, int]:
     prompt_tokens     = int(usage.get("prompt_tokens", 0))
     completion_tokens = int(usage.get("completion_tokens", 0))
 
-    choices = chunk_data.get("choices") or []
-    tool_calls_count = 0
-    for choice in choices:
-        delta = choice.get("delta") or {}
-        tool_calls_count += len(delta.get("tool_calls") or [])
-
-    return prompt_tokens, completion_tokens, tool_calls_count
+    # tool_calls NÃO são contadas por chunk — cada tool vem fragmentada em
+    # múltiplos chunks (um por argumento), o que causaria contagem errada.
+    # A contagem real é feita no chunk com finish_reason=tool_calls abaixo.
+    return prompt_tokens, completion_tokens, 0
 
 
 def _extract_usage_from_response(response_data: dict) -> tuple[int, int, int]:
@@ -135,10 +132,11 @@ async def _proxy_stream(
     accumulator = get_accumulator()
 
     async def generate() -> AsyncIterator[bytes]:
-        total_prompt     = 0
-        total_completion = 0
-        total_tool_calls = 0
-        is_last_call     = False
+        total_prompt      = 0
+        total_completion  = 0
+        total_tool_calls  = 0
+        tool_call_indices: set[int] = set()  # índices únicos de tool_calls no stream
+        is_last_call      = False
 
         try:
             async with httpx.AsyncClient(timeout=settings.upstream_timeout) as client:
@@ -179,7 +177,18 @@ async def _proxy_stream(
                                 p, c, t = _extract_usage_from_chunk(chunk_data)
                                 total_prompt     += p
                                 total_completion += c
-                                total_tool_calls += t
+
+                                # Rastreia índices únicos de tool_calls no stream
+                                # Cada tool_call tem um índice único — mesmo que venha
+                                # fragmentada em muitos chunks, o índice não muda
+                                choices = chunk_data.get("choices") or []
+                                for choice in choices:
+                                    delta = choice.get("delta") or {}
+                                    for tc in (delta.get("tool_calls") or []):
+                                        idx = tc.get("index")
+                                        if idx is not None:
+                                            tool_call_indices.add(idx)
+                                total_tool_calls = len(tool_call_indices)
 
                                 if _is_final_chunk(chunk_data):
                                     is_last_call = True
@@ -356,7 +365,7 @@ async def handle_chat_completions(
         )
 
         logger.info(
-            "Turno [%s] app=%s company=%s → model=%s (est ~%d tokens)",
+            "Turn [%s] app=%s company=%s → model=%s (est ~%d tokens)",
             ctx.turn_id[:8],
             ctx.app_id,
             ctx.company_id,
