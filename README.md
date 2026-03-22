@@ -132,15 +132,15 @@ curl http://localhost:8003/health
 ### 5. Regista a primeira app e gera uma key
 
 ```bash
-# Cria a app
+# Cria a app (access token Auth0 com audience da API — ver Auth0 Dashboard)
 curl -X POST http://localhost:8003/admin/apps \
-  -H "X-Admin-Secret: <ADMIN_SECRET>" \
+  -H "Authorization: Bearer <AUTH0_ACCESS_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{"name": "Minha App", "description": "Descrição opcional"}'
 
 # Gera a key — guarda o valor api_key, não é mostrado novamente
 curl -X POST http://localhost:8003/admin/apps/minha-app/keys \
-  -H "X-Admin-Secret: <ADMIN_SECRET>" \
+  -H "Authorization: Bearer <AUTH0_ACCESS_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{"label": "production"}'
 ```
@@ -158,7 +158,10 @@ Um único `.env` para o gateway e para o Postgres.
 | `POSTGRES_DB` | ✓ | Nome da base de dados |
 | `DATABASE_URL` | ✓ | `postgresql://user:pass@postgres:5432/db` |
 | `OPENROUTER_API_KEY` | ✓ | Key do OpenRouter — nunca sai do gateway |
-| `ADMIN_SECRET` | ✓ | Protege os endpoints `/admin/*` |
+| `AUTH0_DOMAIN` | ✓ | Tenant Auth0 (ex: `dev-xxx.eu.auth0.com`) |
+| `AUTH0_AUDIENCE` | ✓ | Identifier da API Auth0 (audience do access token) |
+| `AUTH0_ISSUER` | — | Opcional; default `https://<AUTH0_DOMAIN>/` |
+| `AUTH0_JWT_LEEWAY_SECONDS` | — | Default `0` |
 | `OLLAMA_BASE_URL` | ✓ | `http://host.docker.internal:11434` |
 | `CLASSIFIER_MODEL` | ✓ | Modelo Ollama para classificação (ex: `qwen2.5:0.5b`) |
 | `UPSTREAM_URL` | — | Default: `https://openrouter.ai/api/v1` |
@@ -168,10 +171,7 @@ Um único `.env` para o gateway e para o Postgres.
 | `PORT` | — | Default: `8003` |
 | `LOG_LEVEL` | — | Default: `info` |
 
-> **Gerar o ADMIN_SECRET:**
-> ```bash
-> python3 -c "import secrets; print(secrets.token_hex(32))"
-> ```
+> **Admin:** access token com audience = `AUTH0_AUDIENCE` e **todas** as permissões definidas em `ADMIN_GATEWAY_REQUIRED_PERMISSIONS` em `src/gateway/auth0_admin.py` (`create` / `delete` / `read` / `update` : `admin-factorai`).
 
 ---
 
@@ -191,13 +191,13 @@ Hash no DB:   sha256("sk-fai-e5627b...") = "a3f9c2d1e4b5..."  ← só isto fica 
 
 ### Endpoints Admin
 
-Todos os endpoints `/admin/*` requerem o header `X-Admin-Secret`.
+Todos os endpoints `/admin/*` requerem `Authorization: Bearer <access_token Auth0>`.
 
 #### Criar app
 
 ```bash
 POST /admin/apps
-X-Admin-Secret: <secret>
+Authorization: Bearer <access_token>
 
 {
   "name": "Severino WhatsApp",
@@ -219,7 +219,7 @@ X-Admin-Secret: <secret>
 
 ```bash
 POST /admin/apps/{app_id}/keys
-X-Admin-Secret: <secret>
+Authorization: Bearer <access_token>
 
 {"label": "production"}
 ```
@@ -241,14 +241,14 @@ X-Admin-Secret: <secret>
 
 ```bash
 GET /admin/apps
-X-Admin-Secret: <secret>
+Authorization: Bearer <access_token>
 ```
 
 #### Listar keys de uma app
 
 ```bash
 GET /admin/apps/{app_id}/keys
-X-Admin-Secret: <secret>
+Authorization: Bearer <access_token>
 ```
 
 Devolve apenas `key_prefix`, `label`, `last_used_at`, `created_at`, `revoked_at` — nunca o hash.
@@ -257,7 +257,7 @@ Devolve apenas `key_prefix`, `label`, `last_used_at`, `created_at`, `revoked_at`
 
 ```bash
 DELETE /admin/apps/{app_id}/keys/{key_id}
-X-Admin-Secret: <secret>
+Authorization: Bearer <access_token>
 ```
 
 Efeito imediato — o cache em memória é invalidado e a key deixa de ser aceite em segundos. O registo fica no Postgres com `revoked_at` preenchido (audit trail).
@@ -407,10 +407,10 @@ O gateway valida **9 headers X-*** em cada request ao `/v1/chat/completions`. He
 
 | Método | Path | Auth | Descrição |
 |---|---|---|---|
-| `GET` | `/usage/logs` | Bearer key / Admin | Logs de uso por turno |
-| `GET` | `/usage/stats` | Bearer key / Admin | Agregados por modelo e app |
+| `GET` | `/usage/logs` | Bearer API key / Bearer Auth0 | Logs de uso por turno |
+| `GET` | `/usage/stats` | Bearer API key / Bearer Auth0 | Agregados por modelo e app |
 
-> **Isolamento:** com Bearer key, a app só vê os seus próprios dados — `app_id` é forçado pela key, o parâmetro `?app_id=` é ignorado. Com `X-Admin-Secret`, sem filtros.
+> **Isolamento:** com Bearer API key, a app só vê os seus próprios dados — `app_id` é forçado pela key, o parâmetro `?app_id=` é ignorado. Com Bearer Auth0 (access token JWS), vês tudo sem filtros de app.
 
 ### Admin
 
@@ -480,7 +480,7 @@ Authorization: Bearer sk-fai-...
 
 # Admin — ver tudo, filtrar por app
 GET /usage/logs?app_id=severino-agiweb
-X-Admin-Secret: <secret>
+Authorization: Bearer <access_token_auth0>
 
 # Correlacionar um turno específico (via psql)
 SELECT * FROM llm_usage_log WHERE turn_id = 'uuid-do-turno';
@@ -545,7 +545,7 @@ Se o Ollama não estiver disponível ou exceder o timeout, o gateway usa o `defa
 
 - Cada app só pode ver os seus próprios logs de uso — `app_id` é sempre inferido da API Key
 - Uma app não pode declarar um `app_id` diferente — o header `X-App-Id` não existe
-- Admin API protegida por `X-Admin-Secret` separado das API Keys das apps
+- Admin API protegida por JWT Auth0 (`Authorization: Bearer`), separado das API Keys das apps
 - Postgres acessível na porta host `5431` e na rede Docker `router_net` (hostname do serviço: `router-db`)
 
 ### Boas práticas
@@ -555,7 +555,6 @@ Se o Ollama não estiver disponível ou exceder o timeout, o gateway usa o `defa
 echo ".env" >> .gitignore
 
 # Gerar valores seguros
-python3 -c "import secrets; print(secrets.token_hex(32))"  # ADMIN_SECRET
 python3 -c "import secrets; print(secrets.token_hex(16))"  # POSTGRES_PASSWORD
 
 # Revogar keys comprometidas imediatamente
@@ -722,7 +721,6 @@ No topo de cada script:
 ```python
 GATEWAY_URL  = "http://localhost:8003"
 API_KEY      = "sk-fai-..."       # key gerada via Admin API
-ADMIN_SECRET = "..."               # para validar centro de custos
 ```
 
 ### O que é testado

@@ -6,23 +6,25 @@ GET /usage/logs   — lista de registos por turno
 GET /usage/stats  — agregados por modelo, empresa e app
 
 Controlo de acesso:
-    - Bearer <app_key>   → só vê os logs da sua própria app (app_id forçado)
-    - X-Admin-Secret     → vê tudo, sem filtros de app
+    - Bearer <app_key>              → só vê os logs da sua própria app (app_id forçado)
+    - Bearer <Auth0 access_token>   → admin, vê tudo (JWS com 3 segmentos; validado com Auth0)
 """
 from __future__ import annotations
 
 from typing import Annotated, Optional
 from dataclasses import dataclass
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.security import HTTPAuthorizationCredentials
 
+from src.api.deps_auth0_admin import get_auth0_verifier, token_looks_like_jws
+from src.gateway.bearer_schemes import usage_access_bearer
+from src.gateway.auth0_admin import Auth0AdminTokenError
 from src.gateway.config import Settings, get_settings
 from src.gateway.key_store import get_key_store
 from src.usage.service import get_usage_logs, get_usage_stats
 
 router = APIRouter()
-bearer_scheme = HTTPBearer(auto_error=False)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -38,52 +40,54 @@ class UsageCaller:
 async def get_usage_caller(
     credentials: Annotated[
         HTTPAuthorizationCredentials | None,
-        Depends(bearer_scheme),
+        Depends(usage_access_bearer),
     ] = None,
-    x_admin_secret: Annotated[str | None, Header()] = None,
     settings: Annotated[Settings, Depends(get_settings)] = None,
 ) -> UsageCaller:
     """
-    Dependency que aceita duas formas de autenticação:
+    Dependency que aceita duas formas de autenticação no mesmo header Bearer:
 
-    1. X-Admin-Secret  → admin, vê tudo sem filtros
-    2. Bearer <key>    → app, só vê os seus próprios logs
+    1. Access token Auth0 (JWS, 3 segmentos) → admin, vê tudo sem filtros
+    2. API key da app → só vê os seus próprios logs
 
     Se nenhuma for fornecida → 401.
     """
-    # Tenta admin primeiro
-    if x_admin_secret:
-        if x_admin_secret == settings.admin_secret:
-            return UsageCaller(is_admin=True, app_id=None)
+    if not credentials or not credentials.credentials or not credentials.credentials.strip():
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={"error": "invalid_admin_secret", "message": "Invalid admin secret."},
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "error": "missing_authentication",
+                "message": (
+                    "Authenticate with 'Authorization: Bearer <api_key>' (app) "
+                    "or 'Authorization: Bearer <auth0_access_token>' (admin)."
+                ),
+            },
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Tenta Bearer key
-    if credentials and credentials.credentials:
-        store = get_key_store()
-        entry = await store.validate(credentials.credentials)
-        if entry is None:
+    raw = credentials.credentials.strip()
+
+    if token_looks_like_jws(raw):
+        verifier = get_auth0_verifier(settings)
+        try:
+            verifier.verify(raw)
+            return UsageCaller(is_admin=True, app_id=None)
+        except Auth0AdminTokenError as e:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail={"error": "invalid_api_key", "message": "Invalid or revoked API key."},
+                detail={"error": "invalid_token", "message": str(e)},
                 headers={"WWW-Authenticate": "Bearer"},
-            )
-        return UsageCaller(is_admin=False, app_id=entry.app_id)
+            ) from e
 
-    # Nenhuma autenticação
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail={
-            "error": "missing_authentication",
-            "message": (
-                "Authenticate with 'Authorization: Bearer <key>' (app) "
-                "or 'X-Admin-Secret: <secret>' (admin)."
-            ),
-        },
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+    store = get_key_store()
+    entry = await store.validate(raw)
+    if entry is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"error": "invalid_api_key", "message": "Invalid or revoked API key."},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return UsageCaller(is_admin=False, app_id=entry.app_id)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -96,8 +100,8 @@ async def get_usage_caller(
     description="""
 Lists token consumption records.
 
-**App (Bearer key):** only sees its own rows — `app_id` is enforced automatically.  
-**Admin (X-Admin-Secret):** sees everything; can filter by any `app_id`.
+**App (Bearer API key):** only sees its own rows — `app_id` is enforced automatically.  
+**Admin (Bearer Auth0 access token):** sees everything; can filter by any `app_id`.
     """,
 )
 async def handle_get_usage_logs(
@@ -131,8 +135,8 @@ async def handle_get_usage_logs(
     description="""
 Total tokens and USD cost with breakdown by model and app.
 
-**App (Bearer key):** only sees its own statistics.  
-**Admin (X-Admin-Secret):** sees everything; can filter by any `app_id`.
+**App (Bearer API key):** only sees its own statistics.  
+**Admin (Bearer Auth0 access token):** sees everything; can filter by any `app_id`.
     """,
 )
 async def handle_get_usage_stats(

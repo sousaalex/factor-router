@@ -15,7 +15,12 @@ A gestão de keys é feita via:
 Variáveis obrigatórias no .env:
     OPENROUTER_API_KEY  — key do OpenRouter (nunca sai do gateway)
     DATABASE_URL        — postgresql+asyncpg://user:pass@host/db
-    ADMIN_SECRET        — protege os endpoints /admin/*
+    AUTH0_DOMAIN        — tenant Auth0 (JWT admin — ver src/gateway/auth0_admin.py)
+    AUTH0_AUDIENCE      — identifier da API Auth0 (audience do access token)
+
+Auth0 (admin via Bearer JWT):
+    AUTH0_ISSUER (opcional), AUTH0_JWT_LEEWAY_SECONDS
+    Permissões admin: fixas em src/gateway/auth0_admin.py (ADMIN_GATEWAY_REQUIRED_PERMISSIONS)
 
 Variáveis opcionais (têm default):
     PORT             — default 8003
@@ -27,6 +32,7 @@ Variáveis opcionais (têm default):
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Optional
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -60,10 +66,25 @@ class Settings(BaseSettings):
         description="PostgreSQL connection string",
     )
 
-    # ── admin ─────────────────────────────────────────────────────────────
-    admin_secret: str = Field(
+    # ── Auth0 — admin: Authorization: Bearer <access_token> ────────────────
+    auth0_domain: str = Field(
         ...,
-        description="Secret para proteger os endpoints /admin/*",
+        min_length=1,
+        description="Tenant Auth0, ex: dev-xxx.eu.auth0.com (sem https://)",
+    )
+    auth0_audience: str = Field(
+        ...,
+        min_length=1,
+        description="Identifier da API Auth0 (audience do access token)",
+    )
+    auth0_issuer: Optional[str] = Field(
+        default=None,
+        description="Issuer exato do JWT; por defeito https://<AUTH0_DOMAIN>/",
+    )
+    auth0_jwt_leeway_seconds: int = Field(
+        default=0,
+        ge=0,
+        description="Margem em segundos para exp (clock skew)",
     )
 
     # ── servidor ──────────────────────────────────────────────────────────

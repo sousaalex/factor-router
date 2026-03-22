@@ -28,7 +28,6 @@ import httpx
 
 GATEWAY_URL   = "http://localhost:8003"
 API_KEY       = "sk-fai-90f75e1a2e503d4edfea7d77bdec8a3c14ff6e640fd55913"
-ADMIN_SECRET  = "sk-fai-4c004a3b72355d6974bac2fb46ca8244199ebe27743861a46219c022ef58f928682ceaaea001407b98f6e520028e8b20d675845a99d7f149d9b13bc2d9c2ca5aa0ee5d9130a703795b30683f66887031b030cc8e632b2e20dddf5b2c3006ab33c7a63ece6de3e160466ec764bb180ccd029247ef42f4990a2ae0f3daf9f724cf5f3564462b98432406ba34af323e866bdfa75d5c219d1b57abfb775f3cf1fa1ddff4e9e4ea30cbe32a7d61f9bc6e697c0dbba14850c56f22091bf96af5461e86ada8f1b2333f5af8b895a999ae7744af1afb885f12e1e24d92b9b7e94abf3bb050e34a69b68780b53b4dc9820e275763273876e012fa58fcbfc479b56963049cfdc49e14"   # só necessário para verificar /usage/logs no fim
 
 # Contexto simulado da app (como se fossem os default_headers do OpenAI client)
 APP_ID        = "bluma"
@@ -221,11 +220,6 @@ async def test_chat_stream(client: httpx.AsyncClient):
 
 async def test_usage_logs(client: httpx.AsyncClient):
     sep("6. Centro de custos — verificar registo de uso")
-    if not ADMIN_SECRET:
-        info("ADMIN_SECRET não configurado — a saltar este teste")
-        info("Define ADMIN_SECRET no topo do ficheiro para testar")
-        return
-
     # Aguarda um momento para o flush assíncrono terminar
     info("A aguardar flush assíncrono (2s)...")
     await asyncio.sleep(2)

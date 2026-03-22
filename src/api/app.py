@@ -91,8 +91,10 @@ O gateway decide o modelo, faz o proxy do stream, e regista o custo.
 
 ## Autenticação
 
-Todos os endpoints requerem `Authorization: Bearer <key>`.
-Obtém a tua API Key com o administrador do gateway.
+- **`/v1/*` (proxy):** `Authorization: Bearer <api_key>` — obtida via Admin API.
+- **`/admin/*` e admin em `/usage/*`:** `Authorization: Bearer <access_token Auth0>` (audience da API no Auth0).
+
+No **Swagger** (`/docs`), usa **Authorize** e escolhe o esquema certo: **GatewayApiKey** (proxy/turns), **Auth0AdminJWT** (admin) ou **UsageAccess** (usage — key ou JWT).
 
 ## Headers obrigatórios
 
@@ -120,15 +122,29 @@ Todos os requests a `/v1/*` devem incluir:
     openapi_tags=[
         {
             "name": "proxy",
-            "description": "Endpoint principal — compatível com OpenAI SDK.",
+            "description": (
+                "Chat completions (OpenAI SDK). No Swagger: **Authorize** → **GatewayApiKey**."
+            ),
+        },
+        {
+            "name": "turns",
+            "description": "Ciclo de vida do turno. **Authorize** → **GatewayApiKey**.",
         },
         {
             "name": "usage",
-            "description": "Centro de custos — leitura de logs e estatísticas.",
+            "description": (
+                "Centro de custos. **Authorize** → **UsageAccess** (API key `sk-fai-...` ou JWT Auth0)."
+            ),
+        },
+        {
+            "name": "admin",
+            "description": (
+                "Apps e API keys. **Authorize** → **Auth0AdminJWT** (access token; permissões admin-factorai completas)."
+            ),
         },
         {
             "name": "system",
-            "description": "Health check e informação do sistema.",
+            "description": "Health check — sem autenticação.",
         },
     ],
 )

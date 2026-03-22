@@ -9,11 +9,12 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import HTTPAuthorizationCredentials
 
+from src.gateway.bearer_schemes import gateway_api_key_bearer
 from src.gateway.key_store import CachedKey, KeyStore, get_key_store
 
-bearer_scheme = HTTPBearer(auto_error=False)
+bearer_scheme = gateway_api_key_bearer
 
 
 class AuthenticatedApp:

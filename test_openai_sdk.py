@@ -31,8 +31,7 @@ from openai import AsyncOpenAI
 # ─────────────────────────────────────────────────────────────────────────────
 
 GATEWAY_URL  = "http://localhost:8003"
-API_KEY      = "sk-fai-90f75e1a2e503d4edfea7d77bdec8a3c14ff6e640fd55913"
-ADMIN_SECRET = ""   # preenche para ver custos no final
+API_KEY      = "sk-fai-f13ea91d2c4a667c24346c0f14fab3a3161ead2f38a2376e"
 
 SESSION_ID   = f"sdk-test-{uuid.uuid4().hex[:8]}"
 COMPANY_ID   = "test-company-001"
@@ -130,9 +129,6 @@ def step(msg: str):  print(f"  →  {msg}")
 
 async def check_usage(turn_id: str, label: str):
     """Verifica o custo registado para este turno no centro de custos."""
-    if not ADMIN_SECRET:
-        return
-
     await asyncio.sleep(2)  # aguarda flush assíncrono
 
     async with httpx.AsyncClient() as client:
@@ -393,19 +389,14 @@ async def main():
     print(f"  SDK:      openai Python")
     print("=" * 64)
 
-    if not ADMIN_SECRET:
-        warn("ADMIN_SECRET não configurado — validação de custos desativada")
-        info("Define ADMIN_SECRET no topo do ficheiro para ver custos")
-
     await test_a_chat_simples()
     await test_b_loop_agentic()
     await test_c_stream_com_tools()
 
     print(f"\n{'=' * 64}")
     print("  Todos os testes concluídos.")
-    if ADMIN_SECRET:
-        print("  Verifica o centro de custos em:")
-        print(f"  GET {GATEWAY_URL}/usage/logs?session_id={SESSION_ID}")
+    print("  Verifica o centro de custos em:")
+    print(f"  GET {GATEWAY_URL}/usage/logs?session_id={SESSION_ID}")
     print("=" * 64)
 
 

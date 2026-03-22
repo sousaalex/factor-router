@@ -3,8 +3,8 @@ src/api/routes/admin.py
 
 Admin API — gestão de apps e API Keys.
 
-Todos os endpoints requerem o header:
-    X-Admin-Secret: <ADMIN_SECRET do .env>
+Todos os endpoints requerem:
+    Authorization: Bearer <access_token Auth0>
 
 Endpoints:
     POST   /admin/apps                     — cria nova app
@@ -18,44 +18,15 @@ from __future__ import annotations
 import logging
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Path, status
+from fastapi import APIRouter, Depends, HTTPException, Path, status
 from pydantic import BaseModel, Field
 
-from src.gateway.config import Settings, get_settings
+from src.api.deps_auth0_admin import require_auth0_admin
+from src.gateway.auth0_admin import Auth0AdminUser
 from src.gateway.key_store import KeyStore, get_key_store
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["admin"])
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Auth do admin — header X-Admin-Secret
-# ─────────────────────────────────────────────────────────────────────────────
-
-async def require_admin(
-    x_admin_secret: Annotated[str | None, Header()] = None,
-    settings: Annotated[Settings, Depends(get_settings)] = None,
-) -> None:
-    """
-    FastAPI dependency. Valida o header X-Admin-Secret.
-    Protege todos os endpoints de admin.
-    """
-    if not x_admin_secret:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={
-                "error": "missing_admin_secret",
-                "message": "The 'X-Admin-Secret' header is required.",
-            },
-        )
-    if x_admin_secret != settings.admin_secret:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "error": "invalid_admin_secret",
-                "message": "Invalid admin secret.",
-            },
-        )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -93,7 +64,7 @@ Register a new app on the gateway. After creating the app, use
 )
 async def create_app(
     body: CreateAppRequest,
-    _: Annotated[None, Depends(require_admin)],
+    _admin: Annotated[Auth0AdminUser, Depends(require_auth0_admin)],
     store: Annotated[KeyStore, Depends(get_key_store)],
 ):
     try:
@@ -129,7 +100,7 @@ async def create_app(
     description="Returns all registered apps with active key counts.",
 )
 async def list_apps(
-    _: Annotated[None, Depends(require_admin)],
+    _admin: Annotated[Auth0AdminUser, Depends(require_auth0_admin)],
     store: Annotated[KeyStore, Depends(get_key_store)],
 ):
     return {"apps": await store.list_apps()}
@@ -152,7 +123,7 @@ Postgres stores only the SHA-256 hash of the key.
 async def create_key(
     app_id: Annotated[str, Path(description="App identifier")],
     body: CreateKeyRequest,
-    _: Annotated[None, Depends(require_admin)],
+    _admin: Annotated[Auth0AdminUser, Depends(require_auth0_admin)],
     store: Annotated[KeyStore, Depends(get_key_store)],
 ):
     try:
@@ -187,7 +158,7 @@ and metadata (label, last_used_at, created_at).
 )
 async def list_keys(
     app_id: Annotated[str, Path()],
-    _: Annotated[None, Depends(require_admin)],
+    _admin: Annotated[Auth0AdminUser, Depends(require_auth0_admin)],
     store: Annotated[KeyStore, Depends(get_key_store)],
 ):
     return {"keys": await store.list_keys(app_id)}
@@ -207,7 +178,7 @@ The key is **not deleted** — only marked inactive.
 async def revoke_key(
     app_id: Annotated[str, Path()],
     key_id: Annotated[str, Path()],
-    _: Annotated[None, Depends(require_admin)],
+    _admin: Annotated[Auth0AdminUser, Depends(require_auth0_admin)],
     store: Annotated[KeyStore, Depends(get_key_store)],
 ):
     try:
