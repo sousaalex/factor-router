@@ -32,9 +32,6 @@ from src.router.router import route as router_route
 if TYPE_CHECKING:
     from src.gateway.context import GatewayContext
 
-logger = logging.getLogger(__name__)
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers — extração de tokens
 # ─────────────────────────────────────────────────────────────────────────────
@@ -98,21 +95,56 @@ async def _flush_and_record(turn_id: str) -> None:
     """
     Faz flush do balde e grava o registo no Postgres.
     Chamado via asyncio.create_task — não bloqueia o agente.
+    Logging completo — qualquer falha é visível nos logs.
     """
     accumulator = get_accumulator()
+    #print("[Flush] Starting flush for turn [%s]", turn_id[:8])
+
     record = await accumulator.flush(turn_id)
     if record is None:
+        #print("[Flush] No bucket found for turn [%s] — already flushed or never opened", turn_id[:8])
         return
+
+    # print(
+    #     "[Flush] Bucket ready [%s] — %d tokens, %d llm_calls, source=%s",
+    #     turn_id[:8],
+    #     record.get("total_tokens", 0),
+    #     record.get("meta", {}).get("llm_calls_count", 0),
+    #     record.get("meta", {}).get("source", "?"),
+    # )
 
     try:
         from src.usage.service import record_turn_usage
         await record_turn_usage(**record)
+        #print("[Flush] Successfully written to DB for turn [%s]", turn_id[:8])
     except Exception as e:
-        logger.error(
-            "Failed to persist turn usage [%s]: %s",
+        print(
+            "[Flush] FAILED to write turn [%s] to DB: %s — record: %s",
             turn_id[:8],
             e,
+            {k: v for k, v in record.items() if k != "meta"},
         )
+
+
+def _create_flush_task(turn_id: str) -> None:
+    """
+    Cria a task de flush com handler de excepção explícito.
+    asyncio.create_task descarta excepções silenciosamente — isto evita isso.
+    """
+    task = asyncio.create_task(_flush_and_record(turn_id))
+
+    def _on_error(t: asyncio.Task) -> None:
+        if t.cancelled():
+            return
+        exc = t.exception()
+        # if exc:
+        #     print(
+        #         "[Flush] Unhandled exception in flush task for turn [%s]: %s",
+        #         turn_id[:8],
+        #         exc,
+        #     )
+
+    task.add_done_callback(_on_error)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -132,6 +164,8 @@ async def _proxy_stream(
     accumulator = get_accumulator()
 
     async def generate() -> AsyncIterator[bytes]:
+        #print(f"[Proxy] generate() called for turn [{ctx.turn_id[:8]}] — new stream connection")
+
         total_prompt      = 0
         total_completion  = 0
         total_tool_calls  = 0
@@ -149,13 +183,16 @@ async def _proxy_stream(
 
                     if upstream.status_code >= 400:
                         error_body = await upstream.aread()
-                        logger.error(
-                            "OpenRouter error %d for turn [%s]: %s",
-                            upstream.status_code,
-                            ctx.turn_id[:8],
-                            error_body[:200],
-                        )
+                        # print(
+                        #     "Upstream error %d for turn [%s]: %s",
+                        #     upstream.status_code,
+                        #     ctx.turn_id[:8],
+                        #     error_body[:200],
+                        # )
                         yield error_body
+                        # Força flush mesmo em erro — tokens foram consumidos
+                        # O balde pode ter tokens de calls anteriores do mesmo turno
+                        is_last_call = True
                         return
 
                     async for raw_line in upstream.aiter_lines():
@@ -174,6 +211,11 @@ async def _proxy_stream(
                                           # quem fecha é o finish_reason=stop no chunk anterior
                             try:
                                 chunk_data = json.loads(data_str)
+                                choices = chunk_data.get("choices") or []
+                                for choice in choices:
+                                    fr = choice.get("finish_reason")
+                                    #if fr:
+                                    #    print(f"[Proxy] finish_reason='{fr}' for turn [{ctx.turn_id[:8]}]")
                                 p, c, t = _extract_usage_from_chunk(chunk_data)
                                 total_prompt     += p
                                 total_completion += c
@@ -192,11 +234,15 @@ async def _proxy_stream(
 
                                 if _is_final_chunk(chunk_data):
                                     is_last_call = True
+                                    #print(f"[Proxy] FINAL CHUNK detected for turn [{ctx.turn_id[:8]}] finish_reason=stop")
+
+                                #print(f"[Proxy] FINALLY turn [{ctx.turn_id[:8]}] is_last_call={is_last_call} total_prompt={total_prompt} total_completion={total_completion} total_tool_calls={total_tool_calls}")
+
                             except json.JSONDecodeError:
                                 pass
 
         except httpx.TimeoutException:
-            logger.error("Upstream timeout for turn [%s]", ctx.turn_id[:8])
+            #print("Timeout no upstream para turno [%s]", ctx.turn_id[:8])
             yield b'data: {"error": "upstream_timeout"}\n\n'
 
         finally:
@@ -210,7 +256,7 @@ async def _proxy_stream(
             # finish_reason=stop → turno terminou → flush assíncrono
             # finish_reason=tool_calls → agente vai fazer outro call → NÃO flush
             if is_last_call:
-                asyncio.create_task(_flush_and_record(ctx.turn_id))
+                _create_flush_task(ctx.turn_id)
 
     return StreamingResponse(
         generate(),
@@ -249,16 +295,19 @@ async def _proxy_json(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
             detail={
                 "error": "upstream_timeout",
-                "message": f"The provider did not respond within {settings.upstream_timeout}s.",
+                "message": f"O provider não respondeu em {settings.upstream_timeout}s.",
             },
         )
 
     if upstream.status_code >= 400:
-        logger.error(
-            "OpenRouter error %d for turn [%s]",
-            upstream.status_code,
-            ctx.turn_id[:8],
-        )
+        # print(
+        #     "Upstream error %d for turn [%s]",
+        #     upstream.status_code,
+        #     ctx.turn_id[:8],
+        # )
+        # Força flush mesmo em erro — tokens foram consumidos pelo provider
+        # O balde pode ter tokens de calls anteriores do mesmo turno agentic
+        _create_flush_task(ctx.turn_id)
         return JSONResponse(
             status_code=upstream.status_code,
             content=upstream.json(),
@@ -282,7 +331,7 @@ async def _proxy_json(
         .get("finish_reason", "stop")
     )
     if finish_reason in ("stop", "end_turn", "length"):
-        asyncio.create_task(_flush_and_record(ctx.turn_id))
+        _create_flush_task(ctx.turn_id)
 
     return JSONResponse(content=response_data)
 
@@ -315,7 +364,7 @@ async def handle_chat_completions(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
                 "error": "invalid_body",
-                "message": "The body must be valid JSON in OpenAI format.",
+                "message": "O body deve ser JSON válido no formato OpenAI.",
             },
         )
 
@@ -325,7 +374,7 @@ async def handle_chat_completions(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
                 "error": "missing_messages",
-                "message": "The 'messages' field is required and cannot be empty.",
+                "message": "O campo 'messages' é obrigatório e não pode estar vazio.",
             },
         )
 
@@ -337,12 +386,12 @@ async def handle_chat_completions(
 
     if model_id is None:
         # Primeiro call deste turno → chama router UMA VEZ
-        logger.debug(
-            "New turn [%s] — calling router | app=%s session=%s",
-            ctx.turn_id[:8],
-            ctx.app_id,
-            ctx.session_id,
-        )
+        # print(
+        #     "Turno novo [%s] — a chamar router | app=%s session=%s",
+        #     ctx.turn_id[:8],
+        #     ctx.app_id,
+        #     ctx.session_id,
+        # )
 
         # Extrai a mensagem do utilizador para o router classificar
         user_message = next(
@@ -364,21 +413,21 @@ async def handle_chat_completions(
             router_est_output_tokens=router_result.estimated_output_tokens,
         )
 
-        logger.info(
-            "Turn [%s] app=%s company=%s → model=%s (est ~%d tokens)",
-            ctx.turn_id[:8],
-            ctx.app_id,
-            ctx.company_id,
-            model_id,
-            router_result.estimated_input_tokens + router_result.estimated_output_tokens,
-        )
+        # print(
+        #     "Turno [%s] app=%s company=%s → model=%s (est ~%d tokens)",
+        #     ctx.turn_id[:8],
+        #     ctx.app_id,
+        #     ctx.company_id,
+        #     model_id,
+        #     router_result.estimated_input_tokens + router_result.estimated_output_tokens,
+        # )
 
     else:
         # Call seguinte do mesmo turno → router NÃO é chamado
         bucket = accumulator._buckets.get(ctx.turn_id)
         call_num = (bucket.llm_calls_count + 1) if bucket else "?"
-        logger.debug(
-            "Ongoing turn [%s] call #%s → model=%s (router skipped)",
+        print(
+            "Turno em curso [%s] call #%s → model=%s (router ignorado)",
             ctx.turn_id[:8],
             call_num,
             model_id,

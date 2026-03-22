@@ -16,5 +16,4 @@ if __name__ == "__main__":
         host=HOST,
         port=PORT,
         reload=True,  # Hot reload during development
-       log_level="info"
     )

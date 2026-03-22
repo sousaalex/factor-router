@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 # Tempo máximo que um balde pode estar em memória sem ser flushed (segundos).
 # Protege contra turn_ids abandonados (agente crashou a meio do turno).
-_TTL_SECONDS = 600  # 10 minutos
+_TTL_SECONDS = 30   # 30 segundos — flush rápido de baldes abandonados
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -111,14 +111,7 @@ class TurnBucket:
         self.tool_calls_count  += tool_calls_in_call
         self.llm_calls_count   += 1
 
-        logger.debug(
-            "Acumulador [%s] — call #%d | +%d prompt +%d completion | total: %d tokens",
-            self.turn_id[:8],
-            self.llm_calls_count,
-            prompt_tokens,
-            completion_tokens,
-            self.total_tokens,
-        )
+        #print(f"[Accumulator] [{self.turn_id[:8]}] call #{self.llm_calls_count} | +{prompt_tokens} prompt +{completion_tokens} completion | total: {self.total_tokens} tokens")
 
     def to_usage_record(self) -> dict:
         """
@@ -207,13 +200,7 @@ class TurnAccumulator:
                     router_est_input_tokens=router_est_input_tokens,
                     router_est_output_tokens=router_est_output_tokens,
                 )
-                logger.debug(
-                    "Balde aberto [%s] app=%s session=%s model=%s",
-                    ctx.turn_id[:8],
-                    ctx.app_id,
-                    ctx.session_id,
-                    model_id,
-                )
+               # print(f"[Accumulator] Bucket opened [{ctx.turn_id[:8]}] app={ctx.app_id} session={ctx.session_id} model={model_id}")
             return self._buckets[ctx.turn_id]
 
     async def record(
@@ -230,10 +217,7 @@ class TurnAccumulator:
         async with self._lock:
             bucket = self._buckets.get(turn_id)
             if bucket is None:
-                logger.warning(
-                    "record() chamado para turn_id desconhecido ou já flushed: %s",
-                    turn_id[:8],
-                )
+               # print(f"[Accumulator] WARNING: record() called for unknown/already-flushed turn [{turn_id[:8]}]")
                 return
             bucket.add_llm_call(
                 prompt_tokens=prompt_tokens,
@@ -251,25 +235,11 @@ class TurnAccumulator:
         async with self._lock:
             bucket = self._buckets.pop(turn_id, None)
             if bucket is None:
-                logger.warning(
-                    "flush() chamado para turn_id desconhecido ou já flushed: %s",
-                    turn_id[:8],
-                )
+               # print(f"[Accumulator] WARNING: flush() called for unknown/already-flushed turn [{turn_id[:8]}]")
                 return None
 
             record = bucket.to_usage_record()
-            logger.info(
-                "Turno flushed [%s] app=%s | %d tokens (%d prompt + %d completion) "
-                "| %d llm_calls | %d tool_calls | source=%s",
-                turn_id[:8],
-                bucket.app_id,
-                record["total_tokens"],
-                record["prompt_tokens"],
-                record["completion_tokens"],
-                record["meta"]["llm_calls_count"],
-                record["tool_calls_count"],
-                record["meta"]["source"],
-            )
+           # print(f"[Accumulator] FLUSH [{turn_id[:8]}] app={bucket.app_id} | {record['total_tokens']} tokens ({record['prompt_tokens']} prompt + {record['completion_tokens']} completion) | {record['meta']['llm_calls_count']} llm_calls | {record['tool_calls_count']} tool_calls | source={record['meta']['source']}")
             return record
 
     async def get_model_id_if_known(self, turn_id: str) -> str | None:
@@ -290,12 +260,13 @@ class TurnAccumulator:
             bucket = self._buckets.get(turn_id)
             return bucket.model_id if bucket is not None else None
 
-    async def cleanup_expired(self) -> int:
+    async def cleanup_expired(self) -> list[dict]:
         """
-        Remove baldes expirados (TTL ultrapassado).
-        Deve ser chamado periodicamente — ex: a cada 5 minutos via background task.
-        Retorna o número de baldes removidos.
+        Remove baldes expirados (TTL ultrapassado) e grava-os no DB.
+        Deve ser chamado periodicamente — ex: a cada 15 segundos via background task.
+        Retorna lista de records para gravar no DB.
         """
+        records_to_save = []
         async with self._lock:
             expired = [
                 turn_id
@@ -304,14 +275,13 @@ class TurnAccumulator:
             ]
             for turn_id in expired:
                 bucket = self._buckets.pop(turn_id)
-                logger.warning(
-                    "Balde expirado removido [%s] app=%s session=%s — "
-                    "turno nao foi flushed (agente crashou?)",
-                    turn_id[:8],
-                    bucket.app_id,
-                    bucket.session_id,
-                )
-            return len(expired)
+                # print(
+                #     f"[Accumulator] TTL expired [{turn_id[:8]}] app={bucket.app_id} "
+                #     f"tokens={bucket.total_tokens} llm_calls={bucket.llm_calls_count} — flushing to DB"
+                # )
+                if bucket.total_tokens > 0:
+                    records_to_save.append(bucket.to_usage_record())
+        return records_to_save
 
     @property
     def active_turns(self) -> int:
