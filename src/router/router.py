@@ -12,7 +12,9 @@ import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
+
+from src.gateway.openai_message_content import flatten_openai_message_content
 
 import httpx
 import yaml
@@ -43,8 +45,10 @@ class RouterResult:
 
 
 OLLAMA_BASE_URL    = os.getenv("OLLAMA_BASE_URL", "")
-CLASSIFIER_MODEL   = os.getenv("CLASSIFIER_MODEL","")
+CLASSIFIER_MODEL   = os.getenv("CLASSIFIER_MODEL", "")
 CLASSIFIER_TIMEOUT = float(os.getenv("CLASSIFIER_TIMEOUT_SECONDS", "8.0"))
+# native → POST /api/chat (Ollama). openai → POST /v1/chat/completions (Ollama recente, LM Studio, etc.)
+_CLASSIFIER_API_RAW = (os.getenv("OLLAMA_CLASSIFIER_API") or "native").strip().lower()
 
 CONFIG_PATH = Path(__file__).parent / "models_config.yaml"
 
@@ -99,7 +103,13 @@ def get_model_info(model_id: str) -> Optional[dict]:
     return None
 
 
-async def _call_classifier(user_message: str, est_in: int, est_out: int) -> tuple[str, int, int, Optional[float]]:
+def _classifier_uses_openai_path() -> bool:
+    return _CLASSIFIER_API_RAW in ("openai", "v1", "compatible", "openai_compatible")
+
+
+async def _call_classifier(
+    user_message: str, est_in: int, est_out: int, base: str
+) -> tuple[str, int, int, Optional[float]]:
     system_prompt, user_prompt = build_classifier_prompt(
         user_message=user_message,
         models=_MODELS,
@@ -107,24 +117,47 @@ async def _call_classifier(user_message: str, est_in: int, est_out: int) -> tupl
         estimated_input_tokens=est_in,
         estimated_output_tokens=est_out,
     )
-    payload = {
-        "model":  CLASSIFIER_MODEL,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user",   "content": user_prompt},
-        ],
-        "stream": False,
-        "think":  False,
-        "options": {"temperature": 0.0, "num_predict": 64},
-    }
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
     async with httpx.AsyncClient(timeout=CLASSIFIER_TIMEOUT) as client:
-        response = await client.post(f"{OLLAMA_BASE_URL}/api/chat", json=payload)
+        if _classifier_uses_openai_path():
+            url = f"{base}/v1/chat/completions"
+            payload = {
+                "model": CLASSIFIER_MODEL,
+                "messages": messages,
+                "stream": False,
+                "temperature": 0,
+                "max_tokens": 256,
+            }
+            response = await client.post(url, json=payload)
+            response.raise_for_status()
+            data = response.json()
+            choices = data.get("choices") or []
+            c0 = choices[0] if choices else {}
+            msg = (c0.get("message") or {}) if isinstance(c0, dict) else {}
+            content = (msg.get("content") or "") if isinstance(msg, dict) else ""
+            usage = data.get("usage") or {}
+            inp = int(usage.get("prompt_tokens") or 0)
+            out = int(usage.get("completion_tokens") or 0)
+            return content.strip(), inp, out, None
+
+        url = f"{base}/api/chat"
+        payload = {
+            "model": CLASSIFIER_MODEL,
+            "messages": messages,
+            "stream": False,
+            "think": False,
+            "options": {"temperature": 0.0, "num_predict": 64},
+        }
+        response = await client.post(url, json=payload)
         response.raise_for_status()
         data = response.json()
 
-    content     = (data.get("message") or {}).get("content") or ""
-    inp         = int(data.get("prompt_eval_count") or 0)
-    out         = int(data.get("eval_count")        or 0)
+    content = (data.get("message") or {}).get("content") or ""
+    inp = int(data.get("prompt_eval_count") or 0)
+    out = int(data.get("eval_count") or 0)
     duration_ns = data.get("eval_duration")
     duration_ms = (float(duration_ns) / 1e6) if duration_ns is not None else None
     return content.strip(), inp, out, duration_ms
@@ -147,11 +180,13 @@ def _parse_model_from_response(raw: str) -> tuple[str, Optional[str]]:
         return _DEFAULT_MODEL, "parse_error"
 
 
-async def route(user_message: str) -> RouterResult:
+async def route(user_message: Any) -> RouterResult:
     """
     Given the user message, returns the model to use.
+    Accepta str ou content OpenAI multimodal (lista de partes).
     Always returns a valid result — never raises an exception.
     """
+    user_message = flatten_openai_message_content(user_message)
     if not user_message or not user_message.strip():
         print(f"[LLMRouter] model: {_DEFAULT_MODEL}")
         return RouterResult(model_id=_DEFAULT_MODEL, input_tokens=0, output_tokens=0, raw_response="(empty message — default)")
@@ -176,7 +211,9 @@ async def route(user_message: str) -> RouterResult:
         )
 
     try:
-        content, inp, out, duration_ms = await _call_classifier(user_message, est_in, est_out)
+        content, inp, out, duration_ms = await _call_classifier(
+            user_message, est_in, est_out, base
+        )
         model_id, fallback = _parse_model_from_response(content)
         logger.info("[Router] '%s...' -> %s (est ~%d tokens, clf in=%d out=%d, %sms)",
                     user_message[:50], model_id, est_in + est_out, inp, out,
@@ -233,6 +270,39 @@ async def route(user_message: str) -> RouterResult:
             input_tokens=0,
             output_tokens=0,
             raw_response=f"(request_error: {e})",
+            estimated_input_tokens=est_in,
+            estimated_output_tokens=est_out,
+        )
+
+    except httpx.HTTPStatusError as e:
+        url = str(e.request.url)
+        code = e.response.status_code
+        openai_hint = (
+            " Define no .env: OLLAMA_CLASSIFIER_API=openai "
+            "(usa POST /v1/chat/completions — Ollama com API OpenAI, LM Studio, etc.)."
+        )
+        native_hint = (
+            " Confirma que é Ollama com endpoint /api/chat ou usa OLLAMA_CLASSIFIER_API=native."
+        )
+        hint = openai_hint if code == 404 and "/api/chat" in url else native_hint if code == 404 else ""
+        logger.error(
+            "[Router] HTTP %s ao classificar (%s): %s.%s Falling back to: %s",
+            code,
+            url,
+            e.response.reason_phrase or "",
+            hint,
+            _DEFAULT_MODEL,
+        )
+        print(
+            f"[Router] HTTP {code} no classificador ({url}).{hint} "
+            f"Falling back to: {_DEFAULT_MODEL}"
+        )
+        print(f"[LLMRouter] model: {_DEFAULT_MODEL}")
+        return RouterResult(
+            model_id=_DEFAULT_MODEL,
+            input_tokens=0,
+            output_tokens=0,
+            raw_response=f"(http_{code})",
             estimated_input_tokens=est_in,
             estimated_output_tokens=est_out,
         )

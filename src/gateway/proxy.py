@@ -27,6 +27,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from src.gateway.accumulator import get_accumulator
 from src.gateway.config import Settings
+from src.gateway.openai_message_content import flatten_openai_message_content
 from src.router.router import route as router_route
 
 if TYPE_CHECKING:
@@ -393,15 +394,18 @@ async def handle_chat_completions(
         #     ctx.session_id,
         # )
 
-        # Extrai a mensagem do utilizador para o router classificar
-        user_message = next(
+        # Extrai a mensagem do utilizador (str ou partes multimodais OpenAI)
+        raw_content = next(
             (
-                m.get("content", "")
+                m.get("content")
                 for m in reversed(messages)
                 if m.get("role") == "user"
             ),
-            ctx.user_message,  # fallback: preview do header X-User-Message
+            None,
         )
+        user_message = flatten_openai_message_content(raw_content)
+        if not user_message:
+            user_message = flatten_openai_message_content(ctx.user_message)
 
         router_result = await router_route(user_message)
         model_id = router_result.model_id
