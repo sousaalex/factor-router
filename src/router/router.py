@@ -158,6 +158,23 @@ async def route(user_message: str) -> RouterResult:
 
     est_in, est_out = estimate_request_tokens(user_message)
 
+    base = (OLLAMA_BASE_URL or "").strip().rstrip("/")
+    if not base:
+        logger.warning(
+            "[Router] OLLAMA_BASE_URL não definido — a usar modelo default: %s",
+            _DEFAULT_MODEL,
+        )
+        print(f"[Router] OLLAMA_BASE_URL não definido — falling back to: {_DEFAULT_MODEL}")
+        print(f"[LLMRouter] model: {_DEFAULT_MODEL}")
+        return RouterResult(
+            model_id=_DEFAULT_MODEL,
+            input_tokens=0,
+            output_tokens=0,
+            raw_response="(OLLAMA_BASE_URL unset)",
+            estimated_input_tokens=est_in,
+            estimated_output_tokens=est_out,
+        )
+
     try:
         content, inp, out, duration_ms = await _call_classifier(user_message, est_in, est_out)
         model_id, fallback = _parse_model_from_response(content)
@@ -175,6 +192,50 @@ async def route(user_message: str) -> RouterResult:
         print(f"[LLMRouter] model: {_DEFAULT_MODEL}")
         return RouterResult(model_id=_DEFAULT_MODEL, input_tokens=0, output_tokens=0,
                            raw_response="(timeout)", estimated_input_tokens=est_in, estimated_output_tokens=est_out)
+
+    except httpx.ConnectError as e:
+        hint = (
+            " Dentro de Docker, usa OLLAMA_BASE_URL=http://host.docker.internal:11434 "
+            "(ou o hostname do serviço na rede), não localhost."
+        )
+        logger.error(
+            "[Router] Sem ligação ao Ollama em %s — %s.%s Falling back to: %s",
+            OLLAMA_BASE_URL,
+            e,
+            hint,
+            _DEFAULT_MODEL,
+        )
+        print(
+            f"[Router] Sem ligação ao Ollama em {OLLAMA_BASE_URL!r}: {e}.{hint} "
+            f"Falling back to: {_DEFAULT_MODEL}"
+        )
+        print(f"[LLMRouter] model: {_DEFAULT_MODEL}")
+        return RouterResult(
+            model_id=_DEFAULT_MODEL,
+            input_tokens=0,
+            output_tokens=0,
+            raw_response=f"(connect_error: {e})",
+            estimated_input_tokens=est_in,
+            estimated_output_tokens=est_out,
+        )
+
+    except httpx.RequestError as e:
+        logger.error(
+            "[Router] Erro de rede ao falar com Ollama (%s): %s — falling back to: %s",
+            OLLAMA_BASE_URL,
+            e,
+            _DEFAULT_MODEL,
+        )
+        print(f"[Router] Erro de rede Ollama ({OLLAMA_BASE_URL}): {e} — falling back to: {_DEFAULT_MODEL}")
+        print(f"[LLMRouter] model: {_DEFAULT_MODEL}")
+        return RouterResult(
+            model_id=_DEFAULT_MODEL,
+            input_tokens=0,
+            output_tokens=0,
+            raw_response=f"(request_error: {e})",
+            estimated_input_tokens=est_in,
+            estimated_output_tokens=est_out,
+        )
 
     except Exception as e:
         logger.error("[Router] Unexpected error: %s — falling back to: %s", e, _DEFAULT_MODEL)

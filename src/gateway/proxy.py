@@ -427,10 +427,7 @@ async def handle_chat_completions(
         bucket = accumulator._buckets.get(ctx.turn_id)
         call_num = (bucket.llm_calls_count + 1) if bucket else "?"
         print(
-            "Turno em curso [%s] call #%s → model=%s (router ignorado)",
-            ctx.turn_id[:8],
-            call_num,
-            model_id,
+            f"Turno em curso [{ctx.turn_id[:8]}] call #{call_num} → model={model_id} (router ignorado)",
         )
 
     # ── 3. Prepara body para o upstream ─────────────────────────────────────
