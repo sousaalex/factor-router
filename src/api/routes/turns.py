@@ -70,9 +70,9 @@ o gateway detecta automaticamente e não precisas de chamar este endpoint.
 
 **Garantia:**
 
-Mesmo que o agente não chame este endpoint, o gateway tem um mecanismo de
-fallback via TTL (30 segundos) que grava os tokens consumidos no DB.
-Este endpoint garante que o flush é imediato e preciso.
+Mesmo que o agente não chame este endpoint, o gateway tem fallback por
+inatividade (TTL desde o último call ao LLM; ver accumulator) que grava
+tokens no DB. Este endpoint garante flush imediato e preciso.
 
 **Headers obrigatórios:** os mesmos 9 headers X-* do `/v1/chat/completions`.
     """,

@@ -36,9 +36,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Tempo máximo que um balde pode estar em memória sem ser flushed (segundos).
-# Protege contra turn_ids abandonados (agente crashou a meio do turno).
-_TTL_SECONDS = 30   # 30 segundos — flush rápido de baldes abandonados
+# Inatividade máxima (segundos) antes do cleanup gravar o balde sem flush explícito.
+# Conta desde o *último* record() (fim de um call ao LLM), não desde a abertura do turno —
+# turnos longos (vários minutos, muitas tools) continuam válidos enquanto houver actividade.
+# Protege contra turn_ids abandonados (crash, rede, agente pendurado).
+_TTL_SECONDS = 30   # 30s sem nenhum call completado → considera abandonado
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -80,6 +82,7 @@ class TurnBucket:
     # controlo interno
     has_real_usage: bool = False   # True se já recebemos tokens reais do provider
     created_at: float = field(default_factory=time.monotonic)
+    last_activity_at: float = field(default_factory=time.monotonic)
 
     @property
     def total_tokens(self) -> int:
@@ -87,7 +90,7 @@ class TurnBucket:
 
     @property
     def is_expired(self) -> bool:
-        return (time.monotonic() - self.created_at) > _TTL_SECONDS
+        return (time.monotonic() - self.last_activity_at) > _TTL_SECONDS
 
     @property
     def source(self) -> str:
@@ -110,6 +113,7 @@ class TurnBucket:
         self.completion_tokens += completion_tokens
         self.tool_calls_count  += tool_calls_in_call
         self.llm_calls_count   += 1
+        self.last_activity_at = time.monotonic()
 
         #print(f"[Accumulator] [{self.turn_id[:8]}] call #{self.llm_calls_count} | +{prompt_tokens} prompt +{completion_tokens} completion | total: {self.total_tokens} tokens")
 
@@ -224,6 +228,13 @@ class TurnAccumulator:
                 completion_tokens=completion_tokens,
                 tool_calls_in_call=tool_calls_in_call,
             )
+
+    async def touch_activity(self, turn_id: str) -> None:
+        """Atualiza last_activity_at (ex.: stream longo antes de record())."""
+        async with self._lock:
+            bucket = self._buckets.get(turn_id)
+            if bucket is not None:
+                bucket.last_activity_at = time.monotonic()
 
     async def flush(self, turn_id: str) -> dict | None:
         """

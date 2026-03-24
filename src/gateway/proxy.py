@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from typing import AsyncIterator, TYPE_CHECKING
 
 import httpx
@@ -172,6 +173,7 @@ async def _proxy_stream(
         total_tool_calls  = 0
         tool_call_indices: set[int] = set()  # índices únicos de tool_calls no stream
         is_last_call      = False
+        last_stream_touch = 0.0
 
         try:
             async with httpx.AsyncClient(timeout=settings.upstream_timeout) as client:
@@ -196,10 +198,18 @@ async def _proxy_stream(
                         is_last_call = True
                         return
 
+                    await accumulator.touch_activity(ctx.turn_id)
+                    last_stream_touch = time.monotonic()
+
                     async for raw_line in upstream.aiter_lines():
                         if not raw_line:
                             yield b"\n"
                             continue
+
+                        now = time.monotonic()
+                        if now - last_stream_touch >= 15:
+                            last_stream_touch = now
+                            await accumulator.touch_activity(ctx.turn_id)
 
                         # Passa o chunk ao agente imediatamente
                         yield (raw_line + "\n\n").encode()
@@ -273,6 +283,16 @@ async def _proxy_stream(
 # Non-streaming proxy
 # ─────────────────────────────────────────────────────────────────────────────
 
+async def _periodic_bucket_touch(turn_id: str, accumulator) -> None:
+    """Mantém o balde vivo durante um POST longo (stream=False)."""
+    try:
+        while True:
+            await asyncio.sleep(15)
+            await accumulator.touch_activity(turn_id)
+    except asyncio.CancelledError:
+        return
+
+
 async def _proxy_json(
     body: dict,
     ctx: GatewayContext,
@@ -283,6 +303,10 @@ async def _proxy_json(
     Aguarda resposta completa, extrai tokens, faz flush.
     """
     accumulator = get_accumulator()
+    await accumulator.touch_activity(ctx.turn_id)
+    touch_task = asyncio.create_task(
+        _periodic_bucket_touch(ctx.turn_id, accumulator)
+    )
 
     try:
         async with httpx.AsyncClient(timeout=settings.upstream_timeout) as client:
@@ -299,6 +323,12 @@ async def _proxy_json(
                 "message": f"O provider não respondeu em {settings.upstream_timeout}s.",
             },
         )
+    finally:
+        touch_task.cancel()
+        try:
+            await touch_task
+        except asyncio.CancelledError:
+            pass
 
     if upstream.status_code >= 400:
         # print(

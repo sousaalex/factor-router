@@ -27,9 +27,8 @@ logger = logging.getLogger(__name__)
 async def _cleanup_loop() -> None:
     """
     Background task — corre a cada 15 segundos.
-    Remove baldes expirados do acumulador e grava-os no DB.
-    Garante que turnos abandonados (agente crashou, loop infinito de tools)
-    ficam registados no centro de custos.
+    Remove baldes sem actividade há mais de TTL (ver accumulator) e grava-os no DB.
+    Garante que turnos abandonados (agente crashou, rede, etc.) ficam registados.
     """
     import asyncio
     from src.gateway.accumulator import get_accumulator
