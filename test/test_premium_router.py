@@ -1,5 +1,5 @@
 """
-Testes do classificador (router) + política premium (Claude só na allowlist → Qwen3.5 Plus).
+Testes do classificador (router) + política premium (Claude só na allowlist → Kimi).
 
 Correr na raiz do repo:
     uv run python -m unittest discover -s test -v
@@ -21,7 +21,7 @@ from src.router.router import route
 
 
 PREMIUM = "anthropic/claude-sonnet-4.6"
-FALLBACK = "qwen/qwen3.5-plus-02-15"
+FALLBACK = "moonshotai/kimi-k2.5"
 
 
 def _ctx(user_id: str | None) -> GatewayContext:
@@ -72,7 +72,7 @@ class TestPremiumModelPolicy(unittest.TestCase):
         out = apply_premium_model_policy(s, ctx, PREMIUM)
         self.assertEqual(out, PREMIUM)
 
-    def test_premium_user_not_on_allowlist_downgrade_plus(self) -> None:
+    def test_premium_user_not_on_allowlist_downgrade_kimi(self) -> None:
         s = _settings(allowlist="only-vip")
         ctx = _ctx("stranger")
         out = apply_premium_model_policy(s, ctx, PREMIUM)
@@ -124,7 +124,7 @@ class TestRouterThenPolicy(unittest.TestCase):
 
         self.assertEqual(asyncio.run(run()), PREMIUM)
 
-    def test_classifier_claude_not_allowlisted_becomes_plus(self) -> None:
+    def test_classifier_claude_not_allowlisted_becomes_kimi(self) -> None:
         async def run() -> str:
             mock_ret = (f'{{"model": "{PREMIUM}"}}', 10, 10, 1.0)
             with patch.object(router_mod, "OLLAMA_BASE_URL", "http://localhost:11434"):

@@ -6,6 +6,7 @@ Constrói os prompts para o classificador.
 
 # Número esperado de tool calls por tier — usado no prompt
 TIER_TOOL_CALLS = {
+    "simple":     "0-2",
     "reasoning":  "1-5",
     "reasoning+": "2-8",
     "complex":    "5-12",
@@ -35,13 +36,15 @@ HOW TO REASON (always follow these steps before deciding):
   STEP 1 — REASONING DEPTH:
     How many logical steps are needed to answer?
     Is the answer direct or does it require chaining logic?
-    → 0-1 logical hops = reasoning tier (Qwen 397B-A17B class — default cheap tier)
-    → 2-3 hops = reasoning+ tier → model qwen/qwen3.5-plus-02-15 (NOT Claude)
+    → Trivial / chat / no real ERP work = simple tier → qwen/qwen3.5-plus-02-15 (cheapest; 1M context)
+    → 1 logical hop with real Agiweb or 1-5 linear tool calls = reasoning tier → qwen/qwen3.5-397b-a17b
+    → 2-3 hops or mild multi-step = reasoning+ tier → moonshotai/kimi-k2.5 (NOT Claude)
     → 4+ hops with conditionals = complex (GPT-5.4 Mini) or true frontier (Claude only if justified)
 
   STEP 2 — TOOL CALLS:
     How many tools will the agent need to call?
     Is there a Many2one to resolve? (e.g. "for client BOLTHERM" requires an ID lookup)
+    → 0-2 trivial calls or none = often simple tier (Plus); real ERP lookups → reasoning or higher
     → 1-5 linear calls = reasoning
     → 2-8 calls with some Many2one = reasoning+
     → 5-12 calls with conditional logic = complex
@@ -50,6 +53,7 @@ HOW TO REASON (always follow these steps before deciding):
   STEP 3 — SYNTHESIS:
     Does the answer require combining data from multiple Agiweb models?
     Is there comparison across time periods, entities, or categories?
+    → No Agiweb / pure language = simple tier when load is light
     → 1 Agiweb model = reasoning
     → 2-3 models with known relationships = reasoning+
     → 4+ models or unknown relationships = complex
@@ -64,11 +68,12 @@ HOW TO REASON (always follow these steps before deciding):
     Escalate only when necessary.
 
     PRODUCT VOCABULARY (do not confuse):
+      - Tier "simple" = qwen/qwen3.5-plus-02-15 — light chat and minimal tool use only.
       - When the user says "reasoning+", "reasoning plus", or the product tier "reasoning+",
-        they mean Qwen3.5 Plus (qwen/qwen3.5-plus-02-15) — NOT Claude Sonnet.
+        they mean the Kimi K2.5 model (moonshotai/kimi-k2.5) — NOT Claude Sonnet.
       - Claude Sonnet is the FRONTIER tier: reserve it ONLY for extreme long-horizon agentic work,
         explicit requests for Claude / frontier / maximum capability, or complexity that clearly
-        exceeds Qwen3.5 Plus and GPT-5.4 Mini. It costs ~6.4x more on output than qwen/qwen3.5-397b-a17b — last resort.
+        exceeds Kimi and GPT-5.4 Mini. It costs ~6.4x more on output than qwen/qwen3.5-397b-a17b — last resort.
       - Never map the phrase "reasoning+" to anthropic/claude-sonnet-4.6.
 
 PRINCIPLE: Good, Clean, and Cheap.
@@ -90,10 +95,10 @@ LOW_OPENROUTER_BALANCE_BLOCK = """
 OPENROUTER PREPAID BALANCE IS LOW (budget mode - act now):
   The organization's OpenRouter credit remaining is at or below the configured threshold.
   Minimize cost while still answering correctly:
-  - Strongly prefer qwen/qwen3.5-397b-a17b whenever 1-6 straightforward tool calls suffice.
-  - Use qwen/qwen3.5-plus-02-15 only when Many2one resolution or multi-step synthesis clearly needs reasoning+.
+  - Prefer qwen/qwen3.5-plus-02-15 for truly simple / chat-only turns; else qwen/qwen3.5-397b-a17b for light ERP.
+  - Use moonshotai/kimi-k2.5 only when Many2one resolution or multi-step synthesis clearly needs reasoning+.
   - Do NOT pick openai/gpt-5.4-mini unless incorrect output would cause serious business harm
-    AND Qwen 397B (reasoning) / Qwen3.5 Plus are clearly insufficient for the workflow.
+    AND Qwen 397B (reasoning) / Kimi are clearly insufficient for the workflow.
   - Do NOT pick anthropic/claude-sonnet-4.6 unless the user explicitly asks for Claude, Sonnet,
     or "frontier" / maximum capability by name.
 ---

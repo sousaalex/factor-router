@@ -5,9 +5,9 @@
 Quando o saldo OpenRouter (USD) gravado na base de dados está **igual ou abaixo** de um limiar configurável, o gateway:
 
 1. **Injeta instruções extra** no *system prompt* do classificador local (Ollama), empurrando a escolha para modelos mais baratos.
-2. **Aplica um teto determinístico**: se o classificador ainda devolver um modelo das categorias **complex** ou **frontier** (definidas em `src/router/models_config.yaml`), o `model_id` efectivo é forçado para **`qwen/qwen3.5-plus-02-15`** (tier reasoning+).
+2. **Aplica um teto determinístico**: se o classificador ainda devolver um modelo das categorias **complex** ou **frontier** (definidas em `src/router/models_config.yaml`), o `model_id` efectivo é forçado para **`moonshotai/kimi-k2.5`** (tier reasoning+).
 
-Isto complementa a política de **modelo premium** (`apply_premium_model_policy`), que trata Claude só para `X-User-Id` na allowlist. O teto de crédito baixo pode ainda reduzir Claude → Qwen3.5 Plus mesmo para utilizadores na allowlist (prioridade: poupança quando o snapshot indica saldo crítico).
+Isto complementa a política de **modelo premium** (`apply_premium_model_policy`), que trata Claude só para `X-User-Id` na allowlist. O teto de crédito baixo pode ainda reduzir Claude → Kimi mesmo para utilizadores na allowlist (prioridade: poupança quando o snapshot indica saldo crítico).
 
 ---
 
@@ -53,7 +53,7 @@ Em **cada** POST ao mesmo turno (incluindo chamadas subsequentes):
 ## Classificador (Ollama)
 
 - **Prompt base:** `CLASSIFIER_SYSTEM_PROMPT` + `CLASSIFIER_USER_PROMPT`, construídos por `build_classifier_prompt()` em `src/router/classifier_prompt.py`.
-- **Modo baixo saldo:** com `openrouter_balance_low=True`, concatena-se `LOW_OPENROUTER_BALANCE_BLOCK` ao *system* (inglês), com regras explícitas: preferir o modelo default do tier *reasoning* (`qwen/qwen3.5-397b-a17b`), reservar `qwen/qwen3.5-plus-02-15` (reasoning+) quando necessário, restringir GPT‑5.4 Mini e Claude exceto pedido explícito do utilizador.
+- **Modo baixo saldo:** com `openrouter_balance_low=True`, concatena-se `LOW_OPENROUTER_BALANCE_BLOCK` ao *system* (inglês), com regras explícitas: preferir o modelo default do tier *reasoning* (`qwen/qwen3.5-397b-a17b`), reservar `moonshotai/kimi-k2.5` (reasoning+) quando necessário, restringir GPT‑5.4 Mini e Claude exceto pedido explícito do utilizador.
 
 O classificador continua a devolver JSON `{"model": "..."}`; o *parsing* e fallbacks mantêm-se em `src/router/router.py` (`route`, `_call_classifier`, `_parse_model_from_response`).
 
@@ -63,7 +63,7 @@ O classificador continua a devolver JSON `{"model": "..."}`; o *parsing* e fallb
 
 `get_model_info(model_id)` expõe o campo `tier` por modelo. Com `balance_low=True`:
 
-- `tier in ("complex", "frontier")` → substituição por `qwen/qwen3.5-plus-02-15`.
+- `tier in ("complex", "frontier")` → substituição por `moonshotai/kimi-k2.5`.
 - `reasoning` / `reasoning+` → sem alteração por este teto.
 
 Mapeamento de IDs e *tiers* está em `src/router/models_config.yaml`.
@@ -99,5 +99,5 @@ flowchart TD
 ## Limitações conhecidas
 
 - Depende do **snapshot** na BD, não de uma consulta em tempo real ao OpenRouter por mensagem.
-- O classificador é heurístico; o **teto** garante um limite máximo de custo por *tier* (complex/frontier → Qwen3.5 Plus) quando o modo está activo.
+- O classificador é heurístico; o **teto** garante um limite máximo de custo por *tier* (complex/frontier → Kimi) quando o modo está activo.
 - `DATABASE_URL` no gateway usa `postgresql+asyncpg://` na app; o *pool* asyncpg partilha a mesma origem que `read_remaining_usd_snapshot`.

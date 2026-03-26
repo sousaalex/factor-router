@@ -14,19 +14,19 @@ class TestCapLowCredit(unittest.TestCase):
             "openai/gpt-5.4-mini",
         )
 
-    def test_complex_to_plus(self) -> None:
+    def test_complex_to_kimi(self) -> None:
         self.assertEqual(
             cap_model_for_low_openrouter_credit("openai/gpt-5.4-mini", balance_low=True),
-            "qwen/qwen3.5-plus-02-15",
+            "moonshotai/kimi-k2.5",
         )
 
-    def test_frontier_to_plus(self) -> None:
+    def test_frontier_to_kimi(self) -> None:
         self.assertEqual(
             cap_model_for_low_openrouter_credit(
                 "anthropic/claude-sonnet-4.6",
                 balance_low=True,
             ),
-            "qwen/qwen3.5-plus-02-15",
+            "moonshotai/kimi-k2.5",
         )
 
     def test_reasoning_unchanged(self) -> None:
@@ -35,10 +35,16 @@ class TestCapLowCredit(unittest.TestCase):
             "qwen/qwen3.5-397b-a17b",
         )
 
-    def test_reasoning_plus_unchanged(self) -> None:
+    def test_simple_tier_unchanged_under_cap(self) -> None:
         self.assertEqual(
             cap_model_for_low_openrouter_credit("qwen/qwen3.5-plus-02-15", balance_low=True),
             "qwen/qwen3.5-plus-02-15",
+        )
+
+    def test_reasoning_plus_unchanged(self) -> None:
+        self.assertEqual(
+            cap_model_for_low_openrouter_credit("moonshotai/kimi-k2.5", balance_low=True),
+            "moonshotai/kimi-k2.5",
         )
 
 

@@ -22,7 +22,7 @@ Isto **não bloqueia** o utilizador: muda a **prioridade de custo** na decisão 
 
 ### 2. Limite de segurança (teto)
 
-Mesmo que a escolha automática ainda aponte para uma categoria **cara**, o gateway **corrige** para um modelo **intermédio** (Qwen3.5 Plus — tier “reasoning+”) quando o saldo está abaixo do limiar definido. Assim garantimos um **teto de despesa** por decisão nesses cenários, sem depender apenas da “opinião” do classificador.
+Mesmo que a escolha automática ainda aponte para uma categoria **cara**, o gateway **corrige** para um modelo **intermédio** (Kimi K2.5 — tier “reasoning+”) quando o saldo está abaixo do limiar definido. Assim garantimos um **teto de despesa** por decisão nesses cenários, sem depender apenas da “opinião” do classificador.
 
 ## Quando é que isto se activa?
 
