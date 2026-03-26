@@ -236,7 +236,7 @@ class TurnAccumulator:
                 bucket.last_activity_at = time.monotonic()
 
     async def set_bucket_model_id(self, turn_id: str, model_id: str) -> None:
-        """Actualiza o model_id do balde (ex.: downgrade Sonnet → Kimi após política)."""
+        """Actualiza o model_id do balde (ex.: downgrade Sonnet → Qwen Plus após política)."""
         async with self._lock:
             bucket = self._buckets.get(turn_id)
             if bucket is not None:

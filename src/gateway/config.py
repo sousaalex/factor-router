@@ -30,7 +30,7 @@ Variáveis opcionais (têm default):
     UPSTREAM_URL     — default https://openrouter.ai/api/v1
     ACCUMULATOR_IDLE_TTL_SECONDS — inatividade máxima do balde (ver accumulator)
     OPENROUTER_MANAGEMENT_API_KEY (opcional), OPENROUTER_CREDITS_* , OPENROUTER_ROUTER_BUDGET_* — créditos / router económico
-    GATEWAY_PREMIUM_MODEL + ALLOWLIST + FALLBACK — Claude só para alguns users; outros → Kimi (default)
+    GATEWAY_PREMIUM_MODEL + ALLOWLIST + FALLBACK — Claude só para alguns users; outros → Qwen3.5 Plus (default)
 """
 from __future__ import annotations
 
@@ -106,10 +106,10 @@ class Settings(BaseSettings):
         description="Lista separada por vírgulas de valores de X-User-Id permitidos no modelo premium.",
     )
     gateway_premium_model_fallback: str = Field(
-        default="moonshotai/kimi-k2.5",
+        default="qwen/qwen3.5-plus-02-15",
         description=(
             "Quando o router escolhe GATEWAY_PREMIUM_MODEL mas X-User-Id não está na allowlist, "
-            "usa este model_id (tipicamente Kimi / reasoning+)."
+            "usa este model_id (tipicamente Qwen3.5 Plus / reasoning+)."
         ),
     )
 

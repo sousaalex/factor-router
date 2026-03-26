@@ -36,7 +36,7 @@ HOW TO REASON (always follow these steps before deciding):
     How many logical steps are needed to answer?
     Is the answer direct or does it require chaining logic?
     → 0-1 logical hops = reasoning tier (Qwen 397B-A17B class — default cheap tier)
-    → 2-3 hops = reasoning+ tier → model moonshotai/kimi-k2.5 (NOT Claude)
+    → 2-3 hops = reasoning+ tier → model qwen/qwen3.5-plus-02-15 (NOT Claude)
     → 4+ hops with conditionals = complex (GPT-5.4 Mini) or true frontier (Claude only if justified)
 
   STEP 2 — TOOL CALLS:
@@ -65,10 +65,10 @@ HOW TO REASON (always follow these steps before deciding):
 
     PRODUCT VOCABULARY (do not confuse):
       - When the user says "reasoning+", "reasoning plus", or the product tier "reasoning+",
-        they mean the Kimi K2.5 model (moonshotai/kimi-k2.5) — NOT Claude Sonnet.
+        they mean Qwen3.5 Plus (qwen/qwen3.5-plus-02-15) — NOT Claude Sonnet.
       - Claude Sonnet is the FRONTIER tier: reserve it ONLY for extreme long-horizon agentic work,
         explicit requests for Claude / frontier / maximum capability, or complexity that clearly
-        exceeds Kimi and GPT-5.4 Mini. It costs ~6.4x more on output than qwen/qwen3.5-397b-a17b — last resort.
+        exceeds Qwen3.5 Plus and GPT-5.4 Mini. It costs ~6.4x more on output than qwen/qwen3.5-397b-a17b — last resort.
       - Never map the phrase "reasoning+" to anthropic/claude-sonnet-4.6.
 
 PRINCIPLE: Good, Clean, and Cheap.
@@ -91,9 +91,9 @@ OPENROUTER PREPAID BALANCE IS LOW (budget mode - act now):
   The organization's OpenRouter credit remaining is at or below the configured threshold.
   Minimize cost while still answering correctly:
   - Strongly prefer qwen/qwen3.5-397b-a17b whenever 1-6 straightforward tool calls suffice.
-  - Use moonshotai/kimi-k2.5 only when Many2one resolution or multi-step synthesis clearly needs it.
+  - Use qwen/qwen3.5-plus-02-15 only when Many2one resolution or multi-step synthesis clearly needs reasoning+.
   - Do NOT pick openai/gpt-5.4-mini unless incorrect output would cause serious business harm
-    AND Qwen (reasoning tier)/Kimi are clearly insufficient for the workflow.
+    AND Qwen 397B (reasoning) / Qwen3.5 Plus are clearly insufficient for the workflow.
   - Do NOT pick anthropic/claude-sonnet-4.6 unless the user explicitly asks for Claude, Sonnet,
     or "frontier" / maximum capability by name.
 ---

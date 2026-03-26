@@ -709,7 +709,7 @@ Os ficheiros de teste estão em **`test/`**. Relatórios gerados (coverage HTML,
 # Dependências + coverage (opcional)
 uv sync --extra dev
 
-# Unitários (unittest) — router, créditos OpenRouter, política Claude/Kimi
+# Unitários (unittest) — router, créditos OpenRouter, política Claude / Qwen Plus
 uv run python -m unittest discover -s test -v
 
 # Unitários + cobertura HTML + test_report.html em test/result/
