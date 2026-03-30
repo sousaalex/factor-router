@@ -14,6 +14,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from src.gateway.config import get_settings
 
@@ -181,6 +182,12 @@ async def add_timing_header(request: Request, call_next):
 
 @app.exception_handler(404)
 async def not_found_handler(request: Request, exc):
+    # Rotas que fazem raise HTTPException(404, detail={...}) — ex.: app_not_found no admin
+    if isinstance(exc, StarletteHTTPException) and isinstance(exc.detail, dict):
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=exc.detail,
+        )
     return JSONResponse(
         status_code=status.HTTP_404_NOT_FOUND,
         content={

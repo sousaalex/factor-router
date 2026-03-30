@@ -28,6 +28,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from src.gateway.accumulator import get_accumulator
 from src.gateway.config import Settings
+from src.gateway.key_store import get_key_store
 from src.gateway.model_policy import (
     apply_premium_model_policy,
     cap_model_for_low_openrouter_credit,
@@ -40,6 +41,29 @@ if TYPE_CHECKING:
     from src.gateway.context import GatewayContext
 
 logger = logging.getLogger(__name__)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Quota por app (tenant) em USD — quanto esta integração pode consumir no router.
+# É um teto interno do Factor Router; não é o saldo de créditos OpenRouter da org.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _app_budget_exceeded_body(
+    app_id: str,
+    spend_cap_usd: float,
+    spent_usd_total: float,
+) -> dict:
+    return {
+        "error":           "app_budget_exceeded",
+        "message": (
+            "This app has reached its maximum allowed usage (USD) on this gateway. "
+            "This limit is per app/API integration and is not your OpenRouter account balance. "
+            "Raise spend_cap_usd via PATCH /admin/apps/{app_id} or contact support."
+        ),
+        "app_id":          app_id,
+        "spend_cap_usd":   spend_cap_usd,
+        "spent_usd_total": spent_usd_total,
+    }
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers — extração de tokens
@@ -417,6 +441,44 @@ async def handle_chat_completions(
         )
 
     is_stream: bool = bool(body.get("stream", False))
+
+    # ── 1b. Quota USD por app (tenant) — teto interno; consumo em gateway_apps ───
+    try:
+        spend_status = await get_key_store().get_app_spend_status(ctx.app_id)
+    except Exception as e:
+        logger.exception("[Proxy] Falha ao ler orçamento da app %s: %s", ctx.app_id, e)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "error":   "budget_check_unavailable",
+                "message": "Could not verify app usage limit. Try again later.",
+            },
+        )
+    if spend_status is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error":   "app_not_found",
+                "message": "App associated with this key was not found.",
+            },
+        )
+    if not spend_status["is_active"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error":   "app_disabled",
+                "message": "This app is disabled.",
+            },
+        )
+    if spend_status["spent_usd_total"] >= spend_status["spend_cap_usd"]:
+        return JSONResponse(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            content=_app_budget_exceeded_body(
+                ctx.app_id,
+                spend_status["spend_cap_usd"],
+                spend_status["spent_usd_total"],
+            ),
+        )
 
     # ── 2. Decide model_id ───────────────────────────────────────────────────
     budget_thr = settings.openrouter_router_budget_threshold_usd

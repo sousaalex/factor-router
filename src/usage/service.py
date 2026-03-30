@@ -93,45 +93,58 @@ async def record_turn_usage(
         print(f"[Usage] Skipping zero-token router_estimate_fallback record for turn [{turn_id[:8]}]")
         return
 
+    total_cost = costs["total_cost_usd"]
     try:
         pool = _get_pool()
         async with pool.acquire() as conn:
-            await conn.execute(
-                """
-                INSERT INTO llm_usage_log (
+            async with conn.transaction():
+                ins = await conn.fetchrow(
+                    """
+                    INSERT INTO llm_usage_log (
+                        turn_id,
+                        app_id, chat_session_id, user_id, user_name, user_email,
+                        company_id, company_name, conversation_id, user_message,
+                        model_id, prompt_tokens, completion_tokens, total_tokens,
+                        input_price_per_1m, output_price_per_1m,
+                        input_cost_usd, output_cost_usd, total_cost_usd,
+                        tool_calls_count, meta
+                    ) VALUES (
+                        $1,
+                        $2,  $3,  $4,  $5,  $6,
+                        $7,  $8,  $9,  $10,
+                        $11, $12, $13, $14,
+                        $15, $16,
+                        $17, $18, $19,
+                        $20, $21::jsonb
+                    )
+                    ON CONFLICT (turn_id) DO NOTHING
+                    RETURNING id
+                    """,
                     turn_id,
                     app_id, chat_session_id, user_id, user_name, user_email,
-                    company_id, company_name, conversation_id, user_message,
+                    company_id, company_name, conversation_id, truncated_msg,
                     model_id, prompt_tokens, completion_tokens, total_tokens,
-                    input_price_per_1m, output_price_per_1m,
-                    input_cost_usd, output_cost_usd, total_cost_usd,
-                    tool_calls_count, meta
-                ) VALUES (
-                    $1,
-                    $2,  $3,  $4,  $5,  $6,
-                    $7,  $8,  $9,  $10,
-                    $11, $12, $13, $14,
-                    $15, $16,
-                    $17, $18, $19,
-                    $20, $21::jsonb
+                    input_price, output_price,
+                    costs["input_cost_usd"], costs["output_cost_usd"], total_cost,
+                    tool_calls_count, meta_json,
                 )
-                ON CONFLICT (turn_id) DO NOTHING
-                """,
-                turn_id,
-                app_id, chat_session_id, user_id, user_name, user_email,
-                company_id, company_name, conversation_id, truncated_msg,
-                model_id, prompt_tokens, completion_tokens, total_tokens,
-                input_price, output_price,
-                costs["input_cost_usd"], costs["output_cost_usd"], costs["total_cost_usd"],
-                tool_calls_count, meta_json,
-            )
+                if ins is not None and app_id:
+                    await conn.execute(
+                        """
+                        UPDATE gateway_apps
+                        SET spent_usd_total = spent_usd_total + $1::double precision
+                        WHERE app_id = $2
+                        """,
+                        total_cost,
+                        app_id,
+                    )
         logger.info(
             "Turno registado [%s] app=%s model=%s tokens=%d cost=$%.6f source=%s",
             turn_id[:8],
             app_id,
             model_id,
             total_tokens,
-            costs["total_cost_usd"],
+            total_cost,
             (meta or {}).get("source", "?"),
         )
     except Exception as e:

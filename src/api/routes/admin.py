@@ -3,12 +3,19 @@ src/api/routes/admin.py
 
 Admin API — gestão de apps e API Keys.
 
+Quota de consumo (USD) é sempre por APP, nunca por API key:
+  - Uma app pode ter várias keys (prod, staging, rotação).
+  - Todas debitam o mesmo `spent_usd_total` e obedecem ao mesmo `spend_cap_usd`.
+  - O router identifica a app pela key, mas o limite e o acumulado são da app.
+  - Aumentar o teto: PATCH /admin/apps/{app_id} com spend_cap_usd.
+
 Todos os endpoints requerem:
     Authorization: Bearer <access_token Auth0>
 
 Endpoints:
     POST   /admin/apps                     — cria nova app
     GET    /admin/apps                     — lista todas as apps
+    PATCH  /admin/apps/{app_id}            — teto USD / is_active
     POST   /admin/apps/{app_id}/keys       — gera nova API Key
     GET    /admin/apps/{app_id}/keys       — lista keys da app
     DELETE /admin/apps/{app_id}/keys/{id}  — revoga uma key
@@ -37,6 +44,26 @@ class CreateAppRequest(BaseModel):
     name:        str           = Field(..., min_length=2, max_length=100,
                                        description="Nome legível: 'Severino WhatsApp'")
     description: Optional[str] = Field(default=None, max_length=500)
+    spend_cap_usd: float = Field(
+        10.0,
+        ge=0.01,
+        description=(
+            "Teto em USD para esta app inteira — todas as API keys desta app partilham o mesmo consumo acumulado. "
+            "Não há quota separada por key. Estimado por tokens × preço do modelo no router."
+        ),
+    )
+
+
+class PatchAppRequest(BaseModel):
+    spend_cap_usd: Optional[float] = Field(
+        default=None,
+        ge=0.01,
+        description="Novo teto em USD para a app (todas as keys somam no mesmo spent_usd_total).",
+    )
+    is_active: Optional[bool] = Field(
+        default=None,
+        description="Se definido, activa ou desactiva a app.",
+    )
 
 
 class CreateKeyRequest(BaseModel):
@@ -71,6 +98,7 @@ async def create_app(
         return await store.create_app(
             name=body.name,
             description=body.description,
+            spend_cap_usd=body.spend_cap_usd,
         )
     except Exception as e:
         if "unique" in str(e).lower() or "duplicate" in str(e).lower():
@@ -97,13 +125,63 @@ async def create_app(
 @router.get(
     "/apps",
     summary="List all apps",
-    description="Returns all registered apps with active key counts.",
+    description="""
+Lista apps com `spend_cap_usd`, `spent_usd_total` e `remaining_usd`.
+O consumo é por app: várias keys da mesma app partilham o mesmo acumulado.
+""",
 )
 async def list_apps(
     _admin: Annotated[Auth0AdminUser, Depends(require_auth0_admin)],
     store: Annotated[KeyStore, Depends(get_key_store)],
 ):
     return {"apps": await store.list_apps()}
+
+
+@router.patch(
+    "/apps/{app_id}",
+    summary="Update app (spend cap / active)",
+    description="""
+Actualiza a **quota de consumo em USD** (`spend_cap_usd`) e/ou o estado `is_active` da app.
+Envia pelo menos um campo no body.
+
+Isto define quanto **esta integração** (ex.: Severino AgiWeb) pode gastar no vosso router — por **app**, não por key:
+todas as API keys da mesma app partilham o mesmo teto e o mesmo `spent_usd_total`.
+**Não confundir** com créditos/saldo OpenRouter da organização (isso é outro fluxo: `/usage/openrouter/credits`).
+
+Serve para apps e keys **já existentes** após a migration 006 (default 10 USD).
+    """,
+)
+async def patch_app(
+    app_id: Annotated[str, Path(description="App identifier")],
+    body: PatchAppRequest,
+    _admin: Annotated[Auth0AdminUser, Depends(require_auth0_admin)],
+    store: Annotated[KeyStore, Depends(get_key_store)],
+):
+    if body.spend_cap_usd is None and body.is_active is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "empty_patch",
+                "message": "Provide at least one of: spend_cap_usd, is_active.",
+            },
+        )
+    try:
+        row = await store.patch_app(
+            app_id,
+            spend_cap_usd=body.spend_cap_usd,
+            is_active=body.is_active,
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": "invalid_patch", "message": str(e)},
+        )
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "app_not_found", "message": f"App '{app_id}' not found."},
+        )
+    return row
 
 
 @router.post(

@@ -1,1 +1,4 @@
 psql "postgresql://admin-factor-router:6b7b961d9ed6ab2b46f11f2c751c7bc4@localhost:5431/factor_router" -f migrations/002_llm_usage_log.sql
+
+
+cd /home/alex-fonseca/projects/llm_router && PGPASSWORD='6b7b961d9ed6ab2b46f11f2c751c7bc4' docker compose exec -T postgres psql -U admin-factor-router -d factor_router -v ON_ERROR_STOP=1 -f /docker-entrypoint-initdb.d/006_app_spend_cap.sql 2>&1

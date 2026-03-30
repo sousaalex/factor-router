@@ -10,6 +10,9 @@ Como a Anthropic e a OpenAI fazem:
     - Cache em memória (TTL 5min) — zero I/O ao DB por request
     - Se o DB for comprometido, as keys reais continuam seguras
 
+Quota de LLM (USD) no router é por APP (gateway_apps): todas as keys da mesma app
+partilham spend_cap_usd e spent_usd_total — a key só identifica a app.
+
 Ciclo de vida de uma key:
     1. Admin chama POST /admin/apps/{app_id}/keys
     2. Gateway gera key = "sk-gw-{app_id}-{secrets.token_hex(24)}"
@@ -175,11 +178,13 @@ class KeyStore:
         self,
         name: str,
         description: str | None = None,
+        spend_cap_usd: float = 10.0,
     ) -> dict:
         """
         Regista uma nova app no gateway.
         O app_id e gerado automaticamente a partir do name:
             "Severino WhatsApp" -> "severino-whatsapp"
+        spend_cap_usd: quota máxima (USD estimados) que esta app pode consumir no router.
         Devolve os dados da app criada.
         """
         import re as _re
@@ -187,14 +192,78 @@ class KeyStore:
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
-                INSERT INTO gateway_apps (app_id, name, description)
-                VALUES ($1, $2, $3)
-                RETURNING id, app_id, name, description, is_active, created_at
+                INSERT INTO gateway_apps (app_id, name, description, spend_cap_usd)
+                VALUES ($1, $2, $3, $4)
+                RETURNING id, app_id, name, description, is_active, created_at,
+                          spend_cap_usd, spent_usd_total
                 """,
-                app_id, name, description,
+                app_id, name, description, spend_cap_usd,
             )
-        logger.info("App created: app_id=%s name=%s", app_id, name)
-        return dict(row)
+        logger.info("App created: app_id=%s name=%s spend_cap_usd=%s", app_id, name, spend_cap_usd)
+        return _serialize_app_row(dict(row))
+
+    async def get_app_spend_status(self, app_id: str) -> Optional[dict]:
+        """
+        Quota do tenant: teto e consumo acumulado em USD (estimado no gateway) para o proxy.
+        Não reflecte saldo OpenRouter — só o que esta app já “gastou” no vosso router.
+        Devolve None se a app não existir.
+        """
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT spend_cap_usd, spent_usd_total, is_active
+                FROM gateway_apps
+                WHERE app_id = $1
+                """,
+                app_id,
+            )
+        if row is None:
+            return None
+        cap = float(row["spend_cap_usd"])
+        spent = float(row["spent_usd_total"])
+        return {
+            "spend_cap_usd":   cap,
+            "spent_usd_total": spent,
+            "remaining_usd":   max(0.0, cap - spent),
+            "is_active":       row["is_active"],
+        }
+
+    async def patch_app(
+        self,
+        app_id: str,
+        *,
+        spend_cap_usd: float | None = None,
+        is_active: bool | None = None,
+    ) -> Optional[dict]:
+        """
+        Actualiza teto de gasto e/ou is_active. Devolve a app actualizada ou None.
+        """
+        if spend_cap_usd is None and is_active is None:
+            raise ValueError("Nothing to update.")
+        sets: list[str] = []
+        args: list = []
+        idx = 1
+        if spend_cap_usd is not None:
+            sets.append(f"spend_cap_usd = ${idx}")
+            args.append(spend_cap_usd)
+            idx += 1
+        if is_active is not None:
+            sets.append(f"is_active = ${idx}")
+            args.append(is_active)
+            idx += 1
+        args.append(app_id)
+        q = f"""
+            UPDATE gateway_apps
+            SET {", ".join(sets)}
+            WHERE app_id = ${idx}
+            RETURNING id, app_id, name, description, is_active, created_at,
+                      spend_cap_usd, spent_usd_total
+        """
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(q, *args)
+        if row is None:
+            return None
+        return _serialize_app_row(dict(row))
 
     async def create_key(
         self,
@@ -311,15 +380,17 @@ class KeyStore:
                 SELECT
                     a.id, a.app_id, a.name, a.description,
                     a.is_active, a.created_at,
+                    a.spend_cap_usd, a.spent_usd_total,
                     COUNT(k.id) FILTER (WHERE k.is_active) AS active_keys
                 FROM gateway_apps a
                 LEFT JOIN gateway_api_keys k ON k.app_id = a.app_id
                 GROUP BY a.id, a.app_id, a.name, a.description,
-                         a.is_active, a.created_at
+                         a.is_active, a.created_at,
+                         a.spend_cap_usd, a.spent_usd_total
                 ORDER BY a.created_at DESC
                 """
             )
-        return [dict(r) for r in rows]
+        return [_serialize_app_row(dict(r)) for r in rows]
 
     async def list_keys(self, app_id: str) -> list[dict]:
         """Lista as keys de uma app (sem expor o hash — só o prefix e metadata)."""
@@ -398,6 +469,23 @@ class KeyStore:
     def cache_size(self) -> int:
         """Número de keys em cache. Útil para métricas e health check."""
         return len(self._cache)
+
+
+def _serialize_app_row(d: dict) -> dict:
+    """Normaliza tipos NUMERIC/datetime para JSON-friendly."""
+    out = dict(d)
+    if "created_at" in out and out["created_at"] is not None:
+        out["created_at"] = out["created_at"].isoformat()
+    for k in ("spend_cap_usd", "spent_usd_total"):
+        if k in out and out[k] is not None:
+            out[k] = float(out[k])
+    if "active_keys" in out and out["active_keys"] is not None:
+        out["active_keys"] = int(out["active_keys"])
+    cap = out.get("spend_cap_usd")
+    spent = out.get("spent_usd_total")
+    if isinstance(cap, (int, float)) and isinstance(spent, (int, float)):
+        out["remaining_usd"] = max(0.0, float(cap) - float(spent))
+    return out
 
 
 # ─────────────────────────────────────────────────────────────────────────────
