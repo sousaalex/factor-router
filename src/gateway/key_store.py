@@ -84,6 +84,12 @@ def generate_api_key(app_id: str) -> tuple[str, str, str]:
     return api_key, key_hash, key_prefix
 
 
+def looks_like_gateway_api_key(api_key: str) -> bool:
+    """Evita reload extra do cache em tentativas óbvias com chave inválida."""
+    s = (api_key or "").strip()
+    return s.startswith("sk-fai-") and len(s) >= 20
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # CachedKey — entrada no cache
 # ─────────────────────────────────────────────────────────────────────────────
@@ -153,17 +159,22 @@ class KeyStore:
 
         Fluxo:
             1. Calcula sha256(api_key)
-            2. Refresca cache se TTL expirou
-            3. Lookup no dict em memória (O(1))
-            4. Verifica is_active
+            2. Refresca cache se TTL expirou (**await** — antes era create_task e o mesmo
+               pedido via cache velho → 401 após reactivar app / nova key)
+            3. Se miss e a string parece key sk-fai-*, faz mais um reload e volta a procurar
+               (admin reactivou app ou alterou BD sem passar pelo patch_app)
+            4. Lookup O(1); verifica is_active na entrada
         """
         key_hash = hash_key(api_key)
 
-        # Refresca cache se TTL expirou (sem bloquear outros requests)
         if self._cache_needs_refresh():
-            asyncio.create_task(self._reload_cache())
+            await self._reload_cache()
 
         entry = self._cache.get(key_hash)
+        if entry is None and looks_like_gateway_api_key(api_key):
+            await self._reload_cache()
+            entry = self._cache.get(key_hash)
+
         if entry is None or not entry.is_active:
             return None
 
@@ -263,7 +274,10 @@ class KeyStore:
             row = await conn.fetchrow(q, *args)
         if row is None:
             return None
-        return _serialize_app_row(dict(row))
+        out = _serialize_app_row(dict(row))
+        # is_active / keys válidas mudam — recarregar cache para não ficar 401 até ao TTL (5 min)
+        await self._reload_cache()
+        return out
 
     async def create_key(
         self,
