@@ -7,6 +7,7 @@ Constrói os prompts para o classificador.
 # Número esperado de tool calls por tier — usado no prompt
 TIER_TOOL_CALLS = {
     "simple":     "0-2",
+    "vl-free":    "0-4",
     "reasoning":  "1-5",
     "reasoning+": "2-8",
     "complex":    "5-12",
@@ -37,6 +38,8 @@ HOW TO REASON (always follow these steps before deciding):
     How many logical steps are needed to answer?
     Is the answer direct or does it require chaining logic?
     → Trivial / chat / no real ERP work = simple tier → qwen/qwen3.5-plus-02-15 (cheapest; 1M context)
+    → Primarily video / multi-image documents / OCR or chart reading from media, minimal Agiweb, $0 only =
+      vl-free tier → nvidia/nemotron-nano-12b-v2-vl:free (128K context; NOT for default ERP reliability)
     → 1 logical hop with real Agiweb or 1-5 linear tool calls = reasoning tier → qwen/qwen3.5-397b-a17b
     → 2-3 hops or mild multi-step = reasoning+ tier → moonshotai/kimi-k2.5 (NOT Claude)
     → 4+ hops with conditionals = complex (GPT-5.4 Mini) or true frontier (Claude only if justified)
