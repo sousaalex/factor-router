@@ -160,36 +160,36 @@ models:
   # TIER 4 — Claude Sonnet 4.6 (LAST RESORT)
   # Frontier agentic — self-correction, 1M context, explicit user request only
   # ---------------------------------------------------------------------------
-  - id: "anthropic/claude-sonnet-4.6"
-    tier: "frontier"
-    task_type: "frontier"
-    context_window: 1000000
-    pricing:
-      input_per_1m_tokens:  "$3.00"
-      output_per_1m_tokens: "$15.00"
-    description: >
-      Claude Sonnet 4.6 by Anthropic — frontier performance in coding, agents and
-      professional work. 1M context. Excellent at iterative development, complex codebase
-      navigation, end-to-end project management, polished document creation and computer use.
-      $3.00/$15.00 per 1M tokens.
+  # - id: "anthropic/claude-sonnet-4.6"
+  #   tier: "frontier"
+  #   task_type: "frontier"
+  #   context_window: 1000000
+  #   pricing:
+  #     input_per_1m_tokens:  "$3.00"
+  #     output_per_1m_tokens: "$15.00"
+  #   description: >
+  #     Claude Sonnet 4.6 by Anthropic — frontier performance in coding, agents and
+  #     professional work. 1M context. Excellent at iterative development, complex codebase
+  #     navigation, end-to-end project management, polished document creation and computer use.
+  #     $3.00/$15.00 per 1M tokens.
 
-      USE ONLY WHEN:
-        - User explicitly requests Claude, frontier tier, or maximum capability — NOT "reasoning+"
-          (reasoning+ in product language = Kimi K2.5 moonshotai/kimi-k2.5, see tier reasoning+)
-        - 10+ tool calls with expected self-correction and iterative re-planning
-        - End-to-end project management workflows with many dependencies
-        - Creation of long, polished documents (reports, proposals, contracts)
-        - Context so long (>50K tokens) that other models lose coherence
-        - Strategic business analysis requiring multi-dimensional reasoning
-    best_for:
-      - "Explicit frontier: 'use Claude', 'frontier model', 'maximum capability', huge 1M context need"
-      - "Strategic business analysis that Kimi / GPT Mini cannot reliably complete"
-      - "Polished document creation: 'prepare a full commercial proposal for client X'"
-      - "Iterative self-correction in very long and complex agentic workflows"
-    not_for: >
-      ANY task that Qwen Plus (simple), Qwen 397B (reasoning), Kimi (reasoning+) or GPT-5.4 Mini can handle correctly.
-      Costs ~6.4x more than Qwen 397B-A17B on output tokens. ABSOLUTE LAST RESORT.
-      Only escalate when the user explicitly requests it or complexity is genuinely frontier.
+  #     USE ONLY WHEN:
+  #       - User explicitly requests Claude, frontier tier, or maximum capability — NOT "reasoning+"
+  #         (reasoning+ in product language = Kimi K2.5 moonshotai/kimi-k2.5, see tier reasoning+)
+  #       - 10+ tool calls with expected self-correction and iterative re-planning
+  #       - End-to-end project management workflows with many dependencies
+  #       - Creation of long, polished documents (reports, proposals, contracts)
+  #       - Context so long (>50K tokens) that other models lose coherence
+  #       - Strategic business analysis requiring multi-dimensional reasoning
+  #   best_for:
+  #     - "Explicit frontier: 'use Claude', 'frontier model', 'maximum capability', huge 1M context need"
+  #     - "Strategic business analysis that Kimi / GPT Mini cannot reliably complete"
+  #     - "Polished document creation: 'prepare a full commercial proposal for client X'"
+  #     - "Iterative self-correction in very long and complex agentic workflows"
+  #   not_for: >
+  #     ANY task that Qwen Plus (simple), Qwen 397B (reasoning), Kimi (reasoning+) or GPT-5.4 Mini can handle correctly.
+  #     Costs ~6.4x more than Qwen 397B-A17B on output tokens. ABSOLUTE LAST RESORT.
+  #     Only escalate when the user explicitly requests it or complexity is genuinely frontier.
 
 
 # =============================================================================
