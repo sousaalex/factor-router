@@ -573,11 +573,24 @@ async def handle_chat_completions(
             await accumulator.set_bucket_model_id(bid, capped)
             model_id = capped
 
+    # FIX: Modelos Qwen/Alibaba rejeitam function.arguments vazio ou não-JSON.
+    # Se o agente enviar um assistant message com tool_calls em que os argumentos são "",
+    # forçamos "{}" para garantir que o upstream não devolve 400.
+    for m in messages:
+        if m.get("role") == "assistant" and "tool_calls" in m:
+            for tc in m["tool_calls"]:
+                func = tc.get("function")
+                if isinstance(func, dict):
+                    args = func.get("arguments")
+                    if not args or str(args).strip() == "":
+                        func["arguments"] = "{}"
+
     # ── 3. Prepara body para o upstream ─────────────────────────────────────
     upstream_body = {
         **body,
         "model": model_id,                           # substitui o model da app
         "stream_options": {"include_usage": True},   # tokens reais no chunk final
+        "messages": messages,                        # passa as mensagens corrigidas
     }
 
     # ── 4. Proxy ─────────────────────────────────────────────────────────────
