@@ -10,7 +10,7 @@ Fluxo por call ao LLM:
        - Tem     → call seguinte do mesmo turno → usa model_id do balde
     3. Injeta o model_id real no body (substitui o que a app enviou)
     4. Adiciona stream_options para garantir tokens reais no chunk final
-    5. Faz proxy ao OpenRouter (stream SSE ou JSON completo)
+    5. Faz proxy ao provider final via LiteLLM (stream SSE ou JSON completo)
     6. Extrai tokens da resposta e regista no acumulador
     7. Se finish_reason=stop → flush do balde → grava no Postgres via usage/service.py
 """
@@ -22,7 +22,7 @@ import logging
 import time
 from typing import AsyncIterator, TYPE_CHECKING
 
-import httpx
+import litellm
 from fastapi import HTTPException, status
 from fastapi.responses import JSONResponse, StreamingResponse
 
@@ -41,6 +41,41 @@ if TYPE_CHECKING:
     from src.gateway.context import GatewayContext
 
 logger = logging.getLogger(__name__)
+
+
+def _provider_api_key_for_model(model_id: str, settings: Settings) -> str | None:
+    """
+    Resolve explicitamente a key com base no namespace do model_id.
+    Mantemos a convenção:
+      - openrouter/* -> OpenRouter
+      - gemini/*     -> Google Gemini direto
+    """
+    if model_id.startswith("openrouter/"):
+        return settings.openrouter_api_key
+    if model_id.startswith("gemini/"):
+        return settings.gemini_api_key
+    return None
+
+
+def _normalize_tool_call_arguments(value) -> str:
+    """
+    Alibaba/Qwen rejeitam assistant.tool_calls[*].function.arguments quando não é
+    uma string JSON válida. Normalizamos para string JSON sempre.
+    """
+    if value is None:
+        return "{}"
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False)
+
+    text = str(value).strip()
+    if not text:
+        return "{}"
+
+    try:
+        json.loads(text)
+        return text
+    except Exception:
+        return "{}"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Quota por app (tenant) em USD — quanto esta integração pode consumir no router.
@@ -207,86 +242,53 @@ async def _proxy_stream(
         last_stream_touch = 0.0
 
         try:
-            async with httpx.AsyncClient(timeout=settings.upstream_timeout) as client:
-                async with client.stream(
-                    "POST",
-                    f"{settings.upstream_url}/chat/completions",
-                    headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
-                    json=body,
-                ) as upstream:
+            bid = ctx.accumulator_bucket_id
+            await accumulator.touch_activity(bid)
+            last_stream_touch = time.monotonic()
 
-                    if upstream.status_code >= 400:
-                        error_body = await upstream.aread()
-                        # print(
-                        #     "Upstream error %d for turn [%s]: %s",
-                        #     upstream.status_code,
-                        #     ctx.turn_id[:8],
-                        #     error_body[:200],
-                        # )
-                        yield error_body
-                        # Força flush mesmo em erro — tokens foram consumidos
-                        # O balde pode ter tokens de calls anteriores do mesmo turno
-                        is_last_call = True
-                        return
+            response = await litellm.acompletion(
+                **body,
+                api_key=_provider_api_key_for_model(body.get("model", ""), settings),
+            )
 
-                    bid = ctx.accumulator_bucket_id
+            async for chunk in response:
+                now = time.monotonic()
+                if now - last_stream_touch >= 15:
+                    last_stream_touch = now
                     await accumulator.touch_activity(bid)
-                    last_stream_touch = time.monotonic()
 
-                    async for raw_line in upstream.aiter_lines():
-                        if not raw_line:
-                            yield b"\n"
-                            continue
+                chunk_data = chunk.model_dump()
+                # Passa o chunk ao agente imediatamente
+                yield (f"data: {json.dumps(chunk_data)}\n\n").encode()
 
-                        now = time.monotonic()
-                        if now - last_stream_touch >= 15:
-                            last_stream_touch = now
-                            await accumulator.touch_activity(bid)
+                p, c, t = _extract_usage_from_chunk(chunk_data)
+                total_prompt     += p
+                total_completion += c
 
-                        # Passa o chunk ao agente imediatamente
-                        yield (raw_line + "\n\n").encode()
+                # Rastreia índices únicos de tool_calls no stream
+                choices = chunk_data.get("choices") or []
+                for choice in choices:
+                    delta = choice.get("delta") or {}
+                    for tc in (delta.get("tool_calls") or []):
+                        idx = tc.get("index")
+                        if idx is not None:
+                            tool_call_indices.add(idx)
+                total_tool_calls = len(tool_call_indices)
 
-                        # Tenta extrair tokens e detectar fim do turno
-                        if raw_line.startswith("data: "):
-                            data_str = raw_line[6:].strip()
-                            if data_str == "[DONE]":
-                                continue  # fim do stream SSE — não fecha o turno
-                                          # quem fecha é o finish_reason=stop no chunk anterior
-                            try:
-                                chunk_data = json.loads(data_str)
-                                choices = chunk_data.get("choices") or []
-                                for choice in choices:
-                                    fr = choice.get("finish_reason")
-                                    #if fr:
-                                    #    print(f"[Proxy] finish_reason='{fr}' for turn [{ctx.turn_id[:8]}]")
-                                p, c, t = _extract_usage_from_chunk(chunk_data)
-                                total_prompt     += p
-                                total_completion += c
+                if _is_final_chunk(chunk_data):
+                    is_last_call = True
 
-                                # Rastreia índices únicos de tool_calls no stream
-                                # Cada tool_call tem um índice único — mesmo que venha
-                                # fragmentada em muitos chunks, o índice não muda
-                                choices = chunk_data.get("choices") or []
-                                for choice in choices:
-                                    delta = choice.get("delta") or {}
-                                    for tc in (delta.get("tool_calls") or []):
-                                        idx = tc.get("index")
-                                        if idx is not None:
-                                            tool_call_indices.add(idx)
-                                total_tool_calls = len(tool_call_indices)
+            yield b"data: [DONE]\n\n"
 
-                                if _is_final_chunk(chunk_data):
-                                    is_last_call = True
-                                    #print(f"[Proxy] FINAL CHUNK detected for turn [{ctx.turn_id[:8]}] finish_reason=stop")
-
-                                #print(f"[Proxy] FINALLY turn [{ctx.turn_id[:8]}] is_last_call={is_last_call} total_prompt={total_prompt} total_completion={total_completion} total_tool_calls={total_tool_calls}")
-
-                            except json.JSONDecodeError:
-                                pass
-
-        except httpx.TimeoutException:
+        except litellm.Timeout as e:
             #print("Timeout no upstream para turno [%s]", ctx.turn_id[:8])
             yield b'data: {"error": "upstream_timeout"}\n\n'
+        except litellm.APIError as e:
+            yield f'data: {{"error": "upstream_api_error", "message": "{e}"}}\n\n'.encode()
+            is_last_call = True
+        except Exception as e:
+            yield f'data: {{"error": "internal_error", "message": "{e}"}}\n\n'.encode()
+            is_last_call = True
 
         finally:
             # Regista tokens deste call no acumulador
@@ -343,19 +345,31 @@ async def _proxy_json(
     )
 
     try:
-        async with httpx.AsyncClient(timeout=settings.upstream_timeout) as client:
-            upstream = await client.post(
-                f"{settings.upstream_url}/chat/completions",
-                headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
-                json=body,
-            )
-    except httpx.TimeoutException:
+        response = await litellm.acompletion(
+            **body,
+            api_key=_provider_api_key_for_model(body.get("model", ""), settings),
+        )
+    except litellm.Timeout as e:
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
             detail={
                 "error": "upstream_timeout",
-                "message": f"O provider não respondeu em {settings.upstream_timeout}s.",
+                "message": f"O provider não respondeu em tempo hábil.",
             },
+        )
+    except litellm.APIError as e:
+        # print("Upstream API error for turn [%s]: %s", ctx.turn_id[:8], e)
+        _create_flush_task(bid)
+        return JSONResponse(
+            status_code=e.status_code or 500,
+            content={"error": {"message": str(e), "type": getattr(e, "type", "api_error")}},
+        )
+    except Exception as e:
+        # print("Unexpected upstream error for turn [%s]: %s", ctx.turn_id[:8], e)
+        _create_flush_task(bid)
+        return JSONResponse(
+            status_code=500,
+            content={"error": {"message": str(e), "type": "internal_error"}},
         )
     finally:
         touch_task.cancel()
@@ -364,21 +378,7 @@ async def _proxy_json(
         except asyncio.CancelledError:
             pass
 
-    if upstream.status_code >= 400:
-        # print(
-        #     "Upstream error %d for turn [%s]",
-        #     upstream.status_code,
-        #     ctx.turn_id[:8],
-        # )
-        # Força flush mesmo em erro — tokens foram consumidos pelo provider
-        # O balde pode ter tokens de calls anteriores do mesmo turno agentic
-        _create_flush_task(bid)
-        return JSONResponse(
-            status_code=upstream.status_code,
-            content=upstream.json(),
-        )
-
-    response_data = upstream.json()
+    response_data = response.model_dump()
     p, c, t = _extract_usage_from_response(response_data)
 
     await accumulator.record(
@@ -559,6 +559,27 @@ async def handle_chat_completions(
 
     await accumulator.touch_activity(bid)
 
+    provider_api_key = _provider_api_key_for_model(model_id, settings)
+    if provider_api_key is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "unsupported_model_provider",
+                "message": (
+                    f"Unsupported model namespace for '{model_id}'. "
+                    "Use openrouter/* or gemini/*."
+                ),
+            },
+        )
+    if model_id.startswith("gemini/") and not provider_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "error": "missing_gemini_api_key",
+                "message": "GEMINI_API_KEY is required for gemini/* models.",
+            },
+        )
+
     if not is_title:
         resolved = apply_premium_model_policy(settings, ctx, model_id)
         if resolved != model_id:
@@ -574,16 +595,22 @@ async def handle_chat_completions(
             model_id = capped
 
     # FIX: Modelos Qwen/Alibaba rejeitam function.arguments vazio ou não-JSON.
-    # Se o agente enviar um assistant message com tool_calls em que os argumentos são "",
-    # forçamos "{}" para garantir que o upstream não devolve 400.
+    # Garantimos sempre uma string JSON válida antes do upstream.
     for m in messages:
         if m.get("role") == "assistant" and "tool_calls" in m:
             for tc in m["tool_calls"]:
                 func = tc.get("function")
                 if isinstance(func, dict):
-                    args = func.get("arguments")
-                    if not args or str(args).strip() == "":
-                        func["arguments"] = "{}"
+                    original_args = func.get("arguments")
+                    normalized_args = _normalize_tool_call_arguments(original_args)
+                    if normalized_args != original_args:
+                        logger.warning(
+                            "[Proxy] Normalized invalid tool_call arguments for model=%s turn=%s tool=%s",
+                            model_id,
+                            ctx.turn_id[:8],
+                            func.get("name", "?"),
+                        )
+                    func["arguments"] = normalized_args
 
     # ── 3. Prepara body para o upstream ─────────────────────────────────────
     upstream_body = {
@@ -592,6 +619,9 @@ async def handle_chat_completions(
         "stream_options": {"include_usage": True},   # tokens reais no chunk final
         "messages": messages,                        # passa as mensagens corrigidas
     }
+
+    # Pass-through: quando o cliente devolver reasoning/reasoning_details entre turns,
+    # o payload OpenAI-compatible segue intacto para o provider via LiteLLM.
 
     # ── 4. Proxy ─────────────────────────────────────────────────────────────
     if is_stream:

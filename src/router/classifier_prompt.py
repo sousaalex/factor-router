@@ -37,10 +37,10 @@ HOW TO REASON (always follow these steps before deciding):
   STEP 1 — REASONING DEPTH:
     How many logical steps are needed to answer?
     Is the answer direct or does it require chaining logic?
-    → Trivial / chat / no real ERP work = simple tier → qwen/qwen3.5-plus-02-15 (cheapest; 1M context)
-    → 1 logical hop with real Agiweb or 1-5 linear tool calls = reasoning tier → qwen/qwen3.5-397b-a17b
-    → 2-3 hops or mild multi-step = reasoning+ tier → moonshotai/kimi-k2.5 (NOT Claude)
-    → 4+ hops with conditionals = complex (GPT-5.4 Mini) or true frontier (Claude only if justified)
+    → Trivial / chat / no real ERP work = simple tier → openrouter/qwen/qwen3.5-plus-02-15
+    → 1 logical hop with real Agiweb or 1-5 linear tool calls = reasoning tier → openrouter/qwen/qwen3.5-397b-a17b
+    → 2-3 hops or mild multi-step = reasoning+ tier → openrouter/moonshotai/kimi-k2.5
+    → 4+ hops with conditionals, critical quality, or very long context = complex/frontier → gemini/gemini-3.1-pro-preview
 
   STEP 2 — TOOL CALLS:
     How many tools will the agent need to call?
@@ -69,13 +69,12 @@ HOW TO REASON (always follow these steps before deciding):
     Escalate only when necessary.
 
     PRODUCT VOCABULARY (do not confuse):
-      - Tier "simple" = qwen/qwen3.5-plus-02-15 — light chat and minimal tool use only.
+      - Tier "simple" = openrouter/qwen/qwen3.5-plus-02-15 — light chat and minimal tool use only.
       - When the user says "reasoning+", "reasoning plus", or the product tier "reasoning+",
-        they mean the Kimi K2.5 model (moonshotai/kimi-k2.5) — NOT Claude Sonnet.
-      - Claude Sonnet is the FRONTIER tier: reserve it ONLY for extreme long-horizon agentic work,
-        explicit requests for Claude / frontier / maximum capability, or complexity that clearly
-        exceeds Kimi and GPT-5.4 Mini. It costs ~6.4x more on output than qwen/qwen3.5-397b-a17b — last resort.
-      - Never map the phrase "reasoning+" to anthropic/claude-sonnet-4.6.
+        they mean the Kimi K2.5 model (openrouter/moonshotai/kimi-k2.5) — not Gemini Pro.
+      - Gemini 3.1 Pro Preview is the high-capability tier: reserve it for long-horizon agentic work,
+        explicit requests for maximum capability, or workflows that clearly exceed Kimi.
+      - Never map the phrase "reasoning+" to gemini/gemini-3.1-pro-preview.
 
 PRINCIPLE: Good, Clean, and Cheap.
   Underestimating complexity = agent fails, user loses trust.
@@ -96,12 +95,9 @@ LOW_OPENROUTER_BALANCE_BLOCK = """
 OPENROUTER PREPAID BALANCE IS LOW (budget mode - act now):
   The organization's OpenRouter credit remaining is at or below the configured threshold.
   Minimize cost while still answering correctly:
-  - Prefer qwen/qwen3.5-plus-02-15 for truly simple / chat-only turns; else qwen/qwen3.5-397b-a17b for light ERP.
-  - Use moonshotai/kimi-k2.5 only when Many2one resolution or multi-step synthesis clearly needs reasoning+.
-  - Do NOT pick openai/gpt-5.4-mini unless incorrect output would cause serious business harm
-    AND Qwen 397B (reasoning) / Kimi are clearly insufficient for the workflow.
-  - Do NOT pick anthropic/claude-sonnet-4.6 unless the user explicitly asks for Claude, Sonnet,
-    or "frontier" / maximum capability by name.
+  - Prefer openrouter/qwen/qwen3.5-plus-02-15 for truly simple / chat-only turns; else openrouter/qwen/qwen3.5-397b-a17b for light ERP.
+  - Use openrouter/moonshotai/kimi-k2.5 only when Many2one resolution or multi-step synthesis clearly needs reasoning+.
+  - Avoid escalating to gemini/gemini-3.1-pro-preview unless quality/risk/context clearly justify it.
 ---
 """
 

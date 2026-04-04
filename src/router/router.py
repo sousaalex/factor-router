@@ -67,7 +67,7 @@ _VALID_IDS     = {m["id"] for m in _MODELS}
 
 # Modelo fixo do gateway (X-Conversation-Id: generate-title). Não está em models_config.yaml
 # para não entrar no prompt do classificador; preços só em get_model_info abaixo.
-GATEWAY_TITLE_MODEL_ID = "google/gemini-2.5-flash-lite"
+GATEWAY_TITLE_MODEL_ID = "gemini/gemini-2.5-flash"
 
 _BASE_CONTEXT_TOKENS = 4000
 _BASE_OUTPUT_TOKENS  = 500

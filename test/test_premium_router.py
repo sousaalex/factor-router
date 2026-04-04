@@ -1,5 +1,5 @@
 """
-Testes do classificador (router) + política premium (Claude só na allowlist → Kimi).
+Testes do classificador (router) + política premium (Gemini só na allowlist → Kimi).
 
 Correr na raiz do repo:
     uv run python -m unittest discover -s test -v
@@ -20,8 +20,8 @@ from src.router import router as router_mod
 from src.router.router import route
 
 
-PREMIUM = "anthropic/claude-sonnet-4.6"
-FALLBACK = "moonshotai/kimi-k2.5"
+PREMIUM = "gemini/gemini-3.1-pro-preview"
+FALLBACK = "openrouter/moonshotai/kimi-k2.5"
 
 
 def _ctx(user_id: str | None) -> GatewayContext:
@@ -57,10 +57,10 @@ class TestPremiumModelPolicy(unittest.TestCase):
     def test_non_premium_model_unchanged(self) -> None:
         s = _settings()
         ctx = _ctx("anyone")
-        out = apply_premium_model_policy(s, ctx, "qwen/qwen3.5-397b-a17b")
-        self.assertEqual(out, "qwen/qwen3.5-397b-a17b")
+        out = apply_premium_model_policy(s, ctx, "openrouter/qwen/qwen3.5-397b-a17b")
+        self.assertEqual(out, "openrouter/qwen/qwen3.5-397b-a17b")
 
-    def test_premium_user_on_allowlist_keeps_claude(self) -> None:
+    def test_premium_user_on_allowlist_keeps_gemini(self) -> None:
         s = _settings(allowlist="allowed-user,foo")
         ctx = _ctx("allowed-user")
         out = apply_premium_model_policy(s, ctx, PREMIUM)
@@ -104,9 +104,9 @@ class TestPremiumModelPolicy(unittest.TestCase):
 
 
 class TestRouterThenPolicy(unittest.TestCase):
-    """Simula classificador a devolver Claude; política aplica allowlist."""
+    """Simula classificador a devolver Gemini premium; política aplica allowlist."""
 
-    def test_classifier_claude_allowlisted_stays_claude(self) -> None:
+    def test_classifier_gemini_allowlisted_stays_gemini(self) -> None:
         async def run() -> str:
             mock_ret = (f'{{"model": "{PREMIUM}"}}', 10, 10, 1.0)
             with patch.object(router_mod, "OLLAMA_BASE_URL", "http://localhost:11434"):
@@ -115,7 +115,7 @@ class TestRouterThenPolicy(unittest.TestCase):
                     "_call_classifier",
                     new=AsyncMock(return_value=mock_ret),
                 ):
-                    rr = await route("preciso de capacidade máxima explícita claude frontier")
+                    rr = await route("preciso de capacidade máxima explícita")
                     return apply_premium_model_policy(
                         _settings(allowlist="mac-client"),
                         _ctx("mac-client"),
@@ -124,7 +124,7 @@ class TestRouterThenPolicy(unittest.TestCase):
 
         self.assertEqual(asyncio.run(run()), PREMIUM)
 
-    def test_classifier_claude_not_allowlisted_becomes_kimi(self) -> None:
+    def test_classifier_gemini_not_allowlisted_becomes_kimi(self) -> None:
         async def run() -> str:
             mock_ret = (f'{{"model": "{PREMIUM}"}}', 10, 10, 1.0)
             with patch.object(router_mod, "OLLAMA_BASE_URL", "http://localhost:11434"):

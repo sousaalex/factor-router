@@ -30,7 +30,7 @@ Variáveis opcionais (têm default):
     UPSTREAM_URL     — default https://openrouter.ai/api/v1
     ACCUMULATOR_IDLE_TTL_SECONDS — inatividade máxima do balde (ver accumulator)
     OPENROUTER_MANAGEMENT_API_KEY (opcional), OPENROUTER_CREDITS_* , OPENROUTER_ROUTER_BUDGET_* — créditos / router económico
-    GATEWAY_PREMIUM_MODEL + ALLOWLIST + FALLBACK — Claude só para alguns users; outros → Kimi (default)
+    GATEWAY_PREMIUM_MODEL + ALLOWLIST + FALLBACK — modelo premium só para alguns users; outros → Kimi (default)
 """
 from __future__ import annotations
 
@@ -54,9 +54,13 @@ class Settings(BaseSettings):
         ...,
         description="Key do OpenRouter — nunca sai do gateway",
     )
+    gemini_api_key: Optional[str] = Field(
+        default=None,
+        description="Key do Google Gemini — litellm usará isto para modelos gemini/*",
+    )
     upstream_url: str = Field(
         default="https://openrouter.ai/api/v1",
-        description="Base URL do provider upstream",
+        description="Base URL do upstream OpenRouter (usado em créditos/observabilidade; LLM calls passam por LiteLLM)",
     )
     upstream_timeout: int = Field(
         default=120,
@@ -97,7 +101,7 @@ class Settings(BaseSettings):
     gateway_premium_model: str = Field(
         default="",
         description=(
-            "Model_id (ex. anthropic/claude-sonnet-4.6) reservado: só X-User-Id em "
+            "Model_id (ex. gemini/gemini-3.1-pro-preview) reservado: só X-User-Id em "
             "GATEWAY_PREMIUM_MODEL_USER_ALLOWLIST pode usá-lo. Vazio = desligado."
         ),
     )
@@ -106,7 +110,7 @@ class Settings(BaseSettings):
         description="Lista separada por vírgulas de valores de X-User-Id permitidos no modelo premium.",
     )
     gateway_premium_model_fallback: str = Field(
-        default="moonshotai/kimi-k2.5",
+        default="openrouter/moonshotai/kimi-k2.5",
         description=(
             "Quando o router escolhe GATEWAY_PREMIUM_MODEL mas X-User-Id não está na allowlist, "
             "usa este model_id (tipicamente Kimi / reasoning+)."

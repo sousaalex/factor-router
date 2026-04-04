@@ -2,11 +2,11 @@
 
 > Gateway centralizado de LLM para a FactorAI — routing inteligente, gestão empresarial de API Keys e centro de custos unificado.
 
-FactorRouter é um proxy OpenAI-compatível que fica entre as tuas apps e os providers de LLM. As apps deixam de chamar o OpenRouter diretamente e passam a usar o FactorRouter como único ponto de entrada — com duas linhas de código.
+FactorRouter é um proxy OpenAI-compatível que fica entre as tuas apps e os providers de LLM. As apps deixam de chamar providers diretamente e passam a usar o FactorRouter como único ponto de entrada — com duas linhas de código.
 
 ```
 [Severino AgiWeb]  ──┐
-[Severino WA]      ──┤──▶  FactorRouter :8003  ──▶  OpenRouter  ──▶  LLM
+[Severino WA]      ──┤──▶  FactorRouter :8003  ──▶  OpenRouter / Google  ──▶  LLM
 [Bluma npm]        ──┘             │
                              Postgres
                        (apps · keys · usage)
@@ -59,7 +59,7 @@ FactorRouter é um proxy OpenAI-compatível que fica entre as tuas apps e os pro
 │       ├─ context.py       valida 9 headers X-*                  │
 │       ├─ accumulator.py   abre/reutiliza balde por X-Turn-Id    │
 │       ├─ router.py        escolhe model_id (Ollama, 1x/turno)   │
-│       └─ proxy.py         SSE ou JSON ao OpenRouter             │
+│       └─ proxy.py         SSE ou JSON ao provider final         │
 │              │                                                   │
 │              └─ flush assíncrono ──▶ usage/service.py           │
 │                                            │                     │
@@ -77,7 +77,7 @@ FactorRouter é um proxy OpenAI-compatível que fica entre as tuas apps e os pro
    → sim: chama router Ollama UMA VEZ → abre balde de tokens
    → não: usa model_id do balde (router ignorado)
 4. Injeta model_id + stream_options no body
-5. Proxy ao OpenRouter (SSE ou JSON)
+5. Proxy ao provider final via LiteLLM (SSE ou JSON)
 6. Extrai tokens de cada chunk
 7. finish_reason=tool_calls → mantém balde aberto (agente vai fazer outro call)
    finish_reason=stop       → flush assíncrono → 1 linha no Postgres
@@ -126,7 +126,7 @@ As migrações SQL correm automaticamente no primeiro arranque do Postgres.
 
 ```bash
 curl http://localhost:8003/health
-# {"status": "ok", "version": "2.0.0", "upstream": "https://openrouter.ai/api/v1"}
+# {"status": "ok", "version": "2.0.0", "openrouter_upstream": "https://openrouter.ai/api/v1"}
 ```
 
 ### 5. Regista a primeira app e gera uma key
@@ -442,7 +442,7 @@ O gateway valida **9 headers X-*** em cada request ao `/v1/chat/completions`. He
   "company_name": "BOLTHERM LDA",
   "conversation_id": null,
   "user_message": "Qual o saldo da conta corrente?",
-  "model_id": "openai/gpt-4o-mini",
+  "model_id": "openrouter/qwen/qwen3.5-397b-a17b",
   "prompt_tokens": 379,
   "completion_tokens": 156,
   "total_tokens": 535,
@@ -499,7 +499,7 @@ Mensagem: "Qual o saldo da conta corrente?"
        ↓
 Ollama (qwen2.5:0.5b) classifica → complexidade: baixa, tipo: consulta
        ↓
-models_config.yaml → modelo barato escolhido (ex: gpt-4o-mini)
+models_config.yaml → modelo escolhido (ex: openrouter/qwen/qwen3.5-397b-a17b)
        ↓
 X-Turn-Id guardado com model_id → próximos calls do mesmo turno usam mesmo modelo
 ```
@@ -508,18 +508,20 @@ X-Turn-Id guardado com model_id → próximos calls do mesmo turno usam mesmo mo
 
 ```yaml
 # models_config.yaml
-default_model: openai/gpt-4o-mini
+default_model: openrouter/qwen/qwen3.5-397b-a17b
 
 models:
-  - id: openai/gpt-4o-mini
+  - id: openrouter/qwen/qwen3.5-plus-02-15
     description: Consultas simples, respostas directas
-    input_per_1m_tokens: 0.15
-    output_per_1m_tokens: 0.60
+    pricing:
+      input_per_1m_tokens: "$0.26"
+      output_per_1m_tokens: "$1.56"
 
-  - id: openai/gpt-4o
-    description: Análise complexa, raciocínio multi-passo
-    input_per_1m_tokens: 2.50
-    output_per_1m_tokens: 10.00
+  - id: gemini/gemini-3.1-pro-preview
+    description: Fluxos complexos, contexto longo, maior fiabilidade
+    pricing:
+      input_per_1m_tokens: "$2.00"
+      output_per_1m_tokens: "$12.00"
 ```
 
 ### Fallback
@@ -709,7 +711,7 @@ Os ficheiros de teste estão em **`test/`**. Relatórios gerados (coverage HTML,
 # Dependências + coverage (opcional)
 uv sync --extra dev
 
-# Unitários (unittest) — router, créditos OpenRouter, política Claude/Kimi
+# Unitários (unittest) — router, créditos OpenRouter, política Gemini/Kimi
 uv run python -m unittest discover -s test -v
 
 # Unitários + cobertura HTML + test_report.html em test/result/

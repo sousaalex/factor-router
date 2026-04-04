@@ -10,12 +10,11 @@
 #   - Does the answer require synthesis across multiple domains?
 #   - What is the cost of an error?
 #
-# ESCALATION LADDER (capability / typical use; compare output $/M on OpenRouter):
-#   Qwen3.5 Plus        $1.56/M  — tier simple: chat trivial, 0-1 hops, 0-2 tool calls, 1M ctx
-#   Qwen3.5 397B-A17B   $2.34/M  — tier reasoning: 1-5 linear tool calls, 262K ctx
-#   Kimi K2.5           $2.20/M  — reasoning+, Many2one / multi-step, 2-8 tool calls
-#   GPT-5.4 Mini        $4.50/M  — complex workflows, critical quality, 3-12 tools
-#   Claude Sonnet       $15.0/M  — long-horizon agentic, self-correction, LAST RESORT
+# ESCALATION LADDER (capability / typical use):
+#   Qwen3.5 Plus        $1.56/M OR output — tier simple: chat trivial, 0-1 hops, 0-2 tool calls, 1M ctx
+#   Qwen3.5 397B-A17B   $2.34/M OR output — tier reasoning: 1-5 linear tool calls, 262K ctx
+#   Kimi K2.5           $2.20/M OR output — reasoning+, Many2one / multi-step, 2-8 tool calls
+#   Gemini 3.1 Pro      $12.0/M Google output — complex/high-risk/high-context workflows, 1M ctx
 # =============================================================================
 
 models:
@@ -23,7 +22,7 @@ models:
   # ---------------------------------------------------------------------------
   # TIER simple — Qwen3.5 Plus (2026-02-15) — perguntas simples (routeadas pelo classificador)
   # ---------------------------------------------------------------------------
-  - id: "qwen/qwen3.5-plus-02-15"
+  - id: "openrouter/qwen/qwen3.5-plus-02-15"
     tier: "simple"
     task_type: "simple"
     context_window: 1000000
@@ -50,9 +49,8 @@ models:
 
   # ---------------------------------------------------------------------------
   # TIER reasoning — Qwen3.5 397B-A17B (DEFAULT quando classificador não escolhe simple)
-  # Vision-language, MoE + linear attention; strong code, agents, tool use; 262K context
   # ---------------------------------------------------------------------------
-  - id: "qwen/qwen3.5-397b-a17b"
+  - id: "openrouter/qwen/qwen3.5-397b-a17b"
     tier: "reasoning"
     task_type: "reasoning"
     context_window: 262144
@@ -60,13 +58,11 @@ models:
       input_per_1m_tokens:  "$0.39"
       output_per_1m_tokens: "$2.34"
     description: >
-      Qwen3.5 397B-A17B by Qwen — native vision-language model on a hybrid architecture
-      (linear attention + sparse mixture-of-experts) for higher inference efficiency.
-      State-of-the-art across language understanding, logical reasoning, code generation,
-      agent tasks, image and video understanding, and GUI interactions. Strong code and
-      agent generalization. 262,144 context. $0.39/$2.34 per 1M tokens (OpenRouter).
+      Qwen3.5 397B-A17B by Qwen — strong reasoning, code, agents and multimodal grounding
+      with 262K context. Use as the default reasoning tier for focused Agiweb work that is
+      clearly beyond trivial chat but does not require the heavier Kimi or Gemini tiers.
 
-      PATTERNS FOR THIS MODEL (reasoning tier — not simple):
+      PATTERNS FOR THIS MODEL:
         - User asks a direct question answerable from the ERP with 1-5 linear tool calls
         - Query has clear structure: who, what, when, how much
         - No synthesis across multiple Agiweb domains — focused on one model at a time
@@ -74,14 +70,12 @@ models:
         - Simple CRUD: create or update one record with known fields
         - Linear reasoning — no ambiguity about what to do next
         - Questions about the current Agiweb page the user is viewing
-        - Follow-ups that need reliable tool use or Agiweb grounding (use 397B, not Plus simple tier)
-        - Visual or page-grounded questions when a single-model ERP answer suffices
+        - Follow-ups that need reliable tool use or Agiweb grounding
     best_for:
       - "Direct Agiweb queries with 1-5 linear tool calls: 'total sales this week', 'list overdue invoices for client X'"
       - "Single Agiweb model CRUD with known fields: 'update phone for contact', 'mark task as done'"
       - "Questions about the current Agiweb page or conversation context"
       - "Simple conversation, follow-up, explanations, formatting of existing data"
-      - "Agent-style tool use and code-oriented steps when complexity stays in the reasoning tier"
     not_for: >
       Queries requiring comparison across multiple periods or entities,
       conditional workflows, deep Many2one resolution,
@@ -91,7 +85,7 @@ models:
   # ---------------------------------------------------------------------------
   # TIER 2 — Kimi K2.5 — reasoning+ (activo)
   # ---------------------------------------------------------------------------
-  - id: "moonshotai/kimi-k2.5"
+  - id: "openrouter/moonshotai/kimi-k2.5"
     tier: "reasoning+"
     task_type: "reasoning+"
     context_window: 262144
@@ -123,73 +117,32 @@ models:
       re-planning mid-execution.
 
   # ---------------------------------------------------------------------------
-  # TIER 3 — GPT-5.4 Mini
-  # Production balance — complex workflows, critical quality
+  # TIER complex/frontier — Gemini 3.1 Pro Preview (Google direto via LiteLLM)
   # ---------------------------------------------------------------------------
-  - id: "openai/gpt-5.4-mini"
-    tier: "complex"
-    task_type: "complex"
-    context_window: 400000
+  - id: "gemini/gemini-3.1-pro-preview"
+    tier: "frontier"
+    task_type: "frontier"
+    context_window: 1048576
     pricing:
-      input_per_1m_tokens:  "$0.75"
-      output_per_1m_tokens: "$4.50"
+      input_per_1m_tokens:  "$2.00"
+      output_per_1m_tokens: "$12.00"
     description: >
-      GPT-5.4 Mini by OpenAI — core GPT-5.4 capabilities in a faster, efficient model.
-      Strong across reasoning, coding and tool use. 400K context fits long histories
-      and large page contexts. $0.75/$4.50 per 1M tokens.
+      Gemini 3.1 Pro Preview by Google — frontier reasoning model for advanced development,
+      high-context workflows, stronger agentic reliability and multimodal analysis. 1,048,576
+      context. Native Google provider via LiteLLM. Use for the heaviest workflows only.
 
       PATTERNS FOR THIS MODEL:
-        - Workflow requiring 5-12 tool calls with multi-level conditional logic
-        - Cascading creation: create A, then use A to create B and C
-        - Mid-execution re-planning: agent discovers mid-run that more data is needed
-        - Deep Many2one with multiple resolution levels
-        - Reports combining 4+ different Agiweb models
-        - Very long conversation history requiring coherence across many turns
-        - Critical quality: errors have real consequences (wrong PO, wrong approval)
+        - Workflow requiring long-horizon planning, stronger self-correction or high reliability
+        - 5+ tool calls with conditional logic, re-planning or structured execution risk
+        - Large context windows where Kimi/Qwen may lose coherence
+        - Complex coding, finance or spreadsheet-style workflows with high error cost
+        - Explicit user request for maximum capability
     best_for:
-      - "Workflows 5-12 tools with conditionals: 'create quote with discount if total exceeds 5000'"
-      - "Cascading creation: 'create client, contact, linked project, and first task'"
-      - "Complex multi-module reports: 'full overview of everything that happened today'"
-      - "Long context requiring coherence: conversation with 10+ turns and interdependent decisions"
+      - "High-risk workflows where incorrect execution has real business cost"
+      - "Long context tasks, complex coding, and structured planning"
+      - "Frontier capability requests when Kimi is likely insufficient"
     not_for: >
-      Tasks that Qwen Plus (simple), Qwen 397B (reasoning) or Kimi (reasoning+) can handle. Escalate only when necessary.
-      Do not use as default — reserve for genuinely complex or high-stakes requests.
-
-
-  # ---------------------------------------------------------------------------
-  # TIER 4 — Claude Sonnet 4.6 (LAST RESORT)
-  # Frontier agentic — self-correction, 1M context, explicit user request only
-  # ---------------------------------------------------------------------------
-  # - id: "anthropic/claude-sonnet-4.6"
-  #   tier: "frontier"
-  #   task_type: "frontier"
-  #   context_window: 1000000
-  #   pricing:
-  #     input_per_1m_tokens:  "$3.00"
-  #     output_per_1m_tokens: "$15.00"
-  #   description: >
-  #     Claude Sonnet 4.6 by Anthropic — frontier performance in coding, agents and
-  #     professional work. 1M context. Excellent at iterative development, complex codebase
-  #     navigation, end-to-end project management, polished document creation and computer use.
-  #     $3.00/$15.00 per 1M tokens.
-
-  #     USE ONLY WHEN:
-  #       - User explicitly requests Claude, frontier tier, or maximum capability — NOT "reasoning+"
-  #         (reasoning+ in product language = Kimi K2.5 moonshotai/kimi-k2.5, see tier reasoning+)
-  #       - 10+ tool calls with expected self-correction and iterative re-planning
-  #       - End-to-end project management workflows with many dependencies
-  #       - Creation of long, polished documents (reports, proposals, contracts)
-  #       - Context so long (>50K tokens) that other models lose coherence
-  #       - Strategic business analysis requiring multi-dimensional reasoning
-  #   best_for:
-  #     - "Explicit frontier: 'use Claude', 'frontier model', 'maximum capability', huge 1M context need"
-  #     - "Strategic business analysis that Kimi / GPT Mini cannot reliably complete"
-  #     - "Polished document creation: 'prepare a full commercial proposal for client X'"
-  #     - "Iterative self-correction in very long and complex agentic workflows"
-  #   not_for: >
-  #     ANY task that Qwen Plus (simple), Qwen 397B (reasoning), Kimi (reasoning+) or GPT-5.4 Mini can handle correctly.
-  #     Costs ~6.4x more than Qwen 397B-A17B on output tokens. ABSOLUTE LAST RESORT.
-  #     Only escalate when the user explicitly requests it or complexity is genuinely frontier.
+      Trivial chat, light ERP lookups, or standard reasoning+ requests that Kimi can handle correctly.
 
 
 # =============================================================================
@@ -197,25 +150,23 @@ models:
 # Used when the classifier cannot determine the tier with confidence.
 # Qwen3.5 397B-A17B — default reasoning tier, 262K context, strong agents/code/VL.
 # =============================================================================
-default_model: "qwen/qwen3.5-397b-a17b"
+default_model: "openrouter/qwen/qwen3.5-397b-a17b"
 
 
 # =============================================================================
-# PRICING SUMMARY (OpenRouter — Feb 2026 listing)
+# PRICING SUMMARY (active catalog)
 # =============================================================================
 #
-#  Model                              | Context | Input /1M | Output /1M | Ratio vs 397B (out $2.34)
-#  -----------------------------------|---------|-----------|------------|---------------------------
-#  qwen/qwen3.5-plus-02-15            | 1M      | $0.26     | $1.56      | 0.67x (tier simple)
-#  qwen/qwen3.5-397b-a17b             | 262K    | $0.39     | $2.34      | 1x   (tier reasoning, default fallback)
-#  moonshotai/kimi-k2.5               | 262K    | $0.45     | $2.20      | 0.94x (reasoning+)
-#  openai/gpt-5.4-mini                | 400K    | $0.75     | $4.50      | 1.92x
-#  anthropic/claude-sonnet-4.6        | 1M      | $3.00     | $15.00     | 6.41x (last resort)
+#  Model                              | Provider    | Context | Input /1M | Output /1M
+#  -----------------------------------|-------------|---------|-----------|------------
+#  openrouter/qwen/qwen3.5-plus-02-15 | OpenRouter  | 1M      | $0.26     | $1.56
+#  openrouter/qwen/qwen3.5-397b-a17b  | OpenRouter  | 262K    | $0.39     | $2.34
+#  openrouter/moonshotai/kimi-k2.5    | OpenRouter  | 262K    | $0.45     | $2.20
+#  gemini/gemini-3.1-pro-preview      | Google      | 1,048K  | $2.00     | $12.00
 #
 #  EXPECTED DISTRIBUTION (target):
-#    parte das queries → Qwen Plus     ($1.56/M — simple)
-#    parte → Qwen 397B-A17B            ($2.34/M — reasoning)
-#    ~15% → Kimi K2.5                  ($2.20/M — reasoning+)
-#     ~4% → GPT Mini                   ($4.50/M)
-#     ~1% → Sonnet                    (explicit user request only)
+#    parte das queries → Qwen Plus     (simple)
+#    parte → Qwen 397B-A17B            (reasoning)
+#    ~15% → Kimi K2.5                  (reasoning+)
+#     pequena parte → Gemini 3.1 Pro   (frontier / high-stakes)
 # =============================================================================

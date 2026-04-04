@@ -1,6 +1,6 @@
 """
-Políticas opcionais por modelo (ex.: Claude frontier só para X-User-Id na allowlist;
-outros utilizadores fazem downgrade para Kimi (ou modelo configurado).
+Políticas opcionais por modelo (ex.: Gemini premium só para X-User-Id na allowlist;
+outros utilizadores fazem downgrade para Kimi via OpenRouter, ou modelo configurado).
 """
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ def _user_in_premium_allowlist(settings: "Settings", ctx: "GatewayContext") -> b
 
 def apply_premium_model_policy(settings: "Settings", ctx: "GatewayContext", model_id: str) -> str:
     """
-    Se o router escolheu o modelo premium (ex. Claude Sonnet) e o utilizador não está
+    Se o router escolheu o modelo premium (ex. Gemini Pro) e o utilizador não está
     na allowlist, devolve GATEWAY_PREMIUM_MODEL_FALLBACK (Kimi por defeito) — sem 403.
 
     Allowlist vazia com premium definido → 503 (config inválida).
@@ -58,7 +58,7 @@ def apply_premium_model_policy(settings: "Settings", ctx: "GatewayContext", mode
     if _user_in_premium_allowlist(settings, ctx):
         return model_id
 
-    fb = (settings.gateway_premium_model_fallback or "").strip() or "moonshotai/kimi-k2.5"
+    fb = (settings.gateway_premium_model_fallback or "").strip() or "openrouter/moonshotai/kimi-k2.5"
     logger.info(
         "[ModelPolicy] Downgrade %s → %s (user_id=%r não está na allowlist premium)",
         model_id,
@@ -70,15 +70,15 @@ def apply_premium_model_policy(settings: "Settings", ctx: "GatewayContext", mode
 
 def cap_model_for_low_openrouter_credit(model_id: str, *, balance_low: bool) -> str:
     """
-    Com saldo OpenRouter baixo (snapshot BD), não usar tiers complex/frontier — desce para Kimi.
-    Corre depois do router e de apply_premium_model_policy.
+    Com saldo OpenRouter baixo (snapshot BD), não usar tiers caros alojados no OpenRouter.
+    Modelos nativos fora do OpenRouter (ex.: gemini/* direto) não são afetados.
     """
-    if not balance_low:
+    if not balance_low or not model_id.startswith("openrouter/"):
         return model_id
     from src.router.router import get_model_info
 
     info = get_model_info(model_id)
     tier = (info or {}).get("tier")
     if tier in ("complex", "frontier"):
-        return "moonshotai/kimi-k2.5"
+        return "openrouter/moonshotai/kimi-k2.5"
     return model_id

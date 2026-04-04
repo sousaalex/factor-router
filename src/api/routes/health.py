@@ -17,7 +17,7 @@ router = APIRouter(tags=["system"])
 class HealthResponse(BaseModel):
     status: str
     version: str
-    upstream: str
+    openrouter_upstream: str
 
 
 @router.get(
@@ -31,5 +31,5 @@ async def health_check() -> HealthResponse:
     return HealthResponse(
         status="ok",
         version="2.0.0",
-        upstream=settings.upstream_url,
+        openrouter_upstream=settings.upstream_url,
     )

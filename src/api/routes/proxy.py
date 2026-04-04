@@ -8,7 +8,7 @@ Fluxo:
 1. Autentica a API Key (auth.py)
 2. Valida e extrai os headers de contexto (context.py)
 3. Chama o router para decidir o model_id
-4. Faz proxy do request para o OpenRouter (stream ou non-stream)
+4. Faz proxy do request para o provider final via LiteLLM (stream ou non-stream)
 5. Regista o custo no fim do turno
 
 Este ficheiro define apenas o endpoint.
@@ -35,7 +35,7 @@ Main gateway endpoint. Accepts the same body the OpenAI SDK sends.
 
 **The `model` field in the body is ignored** for normal chat — the gateway uses an internal
 router to pick the model. Exception: when **`X-Conversation-Id` is exactly `generate-title`**
-(title generation), the gateway skips the router and uses **`google/gemini-2.5-flash-lite`**
+(title generation), the gateway skips the router and uses **`gemini/gemini-2.5-flash`**
 (same `POST /v1/chat/completions`; usage is tracked under a separate bucket from the chat turn).
 
 Supports `stream: true` (SSE) and `stream: false` (full JSON).
@@ -50,7 +50,7 @@ async def chat_completions(
     ctx: Annotated[GatewayContext, Depends(GatewayContext.from_headers)],
 ):
     """
-    Proxy transparente para o OpenRouter com routing automático de modelos.
+    Proxy transparente para OpenRouter/Google com routing automático de modelos.
     O app_id vem sempre da API Key — nunca de headers enviados pelo agente.
     """
     # Injeta o app_id da API Key no contexto
