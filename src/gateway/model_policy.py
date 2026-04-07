@@ -20,6 +20,11 @@ def _parse_allowlist(raw: str) -> set[str]:
     return {x.strip() for x in (raw or "").split(",") if x.strip()}
 
 
+def _strip_openrouter_prefix(model_id: str) -> str:
+    s = (model_id or "").strip()
+    return s[len("openrouter/") :] if s.startswith("openrouter/") else s
+
+
 def _user_in_premium_allowlist(settings: "Settings", ctx: "GatewayContext") -> bool:
     allowed_raw = _parse_allowlist(settings.gateway_premium_model_user_allowlist)
     if not allowed_raw:
@@ -39,7 +44,9 @@ def apply_premium_model_policy(settings: "Settings", ctx: "GatewayContext", mode
     Allowlist vazia com premium definido → 503 (config inválida).
     """
     premium = (settings.gateway_premium_model or "").strip()
-    if not premium or model_id != premium:
+    if not premium:
+        return model_id
+    if _strip_openrouter_prefix(model_id) != _strip_openrouter_prefix(premium):
         return model_id
 
     allowed_raw = _parse_allowlist(settings.gateway_premium_model_user_allowlist)
@@ -74,6 +81,8 @@ def cap_model_for_low_openrouter_credit(model_id: str, *, balance_low: bool) -> 
     Corre depois do router e de apply_premium_model_policy.
     """
     if not balance_low:
+        return model_id
+    if (model_id or "").strip().startswith("ollama/"):
         return model_id
     from src.router.router import get_model_info
 

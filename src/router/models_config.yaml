@@ -10,18 +10,119 @@
 #   - Does the answer require synthesis across multiple domains?
 #   - What is the cost of an error?
 #
-# ESCALATION LADDER (capability / typical use; compare output $/M on OpenRouter):
-#   Qwen3.5 Plus        $1.56/M  — tier simple: chat trivial, 0-1 hops, 0-2 tool calls, 1M ctx
-#   Qwen3.5 397B-A17B   $2.34/M  — tier reasoning: 1-5 linear tool calls, 262K ctx
-#   Kimi K2.5           $2.20/M  — reasoning+, Many2one / multi-step, 2-8 tool calls
-#   GPT-5.4 Mini        $4.50/M  — complex workflows, critical quality, 3-12 tools
-#   Claude Sonnet       $15.0/M  — long-horizon agentic, self-correction, LAST RESORT
+# ESCALATION LADDER (capability vs listed output $/M in this file):
+#   Qwen3.5 Plus        $1.56/M  — simple tier
+#   Gemma 4 E2B         $0       — efficient reasoning-class edge
+#   Qwen3.5 397B-A17B   $2.34/M  — reasoning
+#   Gemma 4 E4B / 8B / 26B / 31B — strong local / MoE / dense (see entries)
+#   Kimi K2.5           $2.20/M  — reasoning+
+#   GPT-5.4 Mini        $4.50/M  — complex
+#
+# COST ACCOUNTING (gateway → llm_usage_log, no code change when you edit prices):
+#   - pricing.input_per_1m_tokens / output_per_1m_tokens are USD per 1M tokens.
+#   - $0 / $0 is valid: the cost center still records prompt_tokens, completion_tokens,
+#     total_tokens, and snapshots input_price_per_1m / output_price_per_1m; total_cost_usd is 0.
+#   - When you later set non-zero rates (local shadow pricing, proprietary API, etc.),
+#     new turns use the updated YAML automatically via get_model_info → record_turn_usage.
 # =============================================================================
 
 models:
 
   # ---------------------------------------------------------------------------
-  # TIER simple — Qwen3.5 Plus (2026-02-15) — perguntas simples (routeadas pelo classificador)
+  # Gemma 4 family — listed first; dense, MoE, and efficient edge variants
+  # ---------------------------------------------------------------------------
+  # - id: "ollama/gemma4:e4b"
+  #   tier: "reasoning+"
+  #   task_type: "reasoning+"
+  #   context_window: 128000
+  #   pricing:
+  #     input_per_1m_tokens:  "$0"
+  #     output_per_1m_tokens: "$0"
+  #   description: >
+  #     Gemma 4 default dense variant (~8B class, typical quantizations). Multimodal text and image,
+  #     native function-calling, strong coding and agentic behavior within a 128K context. Designed
+  #     for frontier-class behavior at this size: reasoning with configurable thinking (e.g. control
+  #     via template conventions your stack applies), solid tool use, and long enough context for
+  #     substantial sessions. Recommended sampling profile: temperature 1.0, top_p 0.95, top_k 64.
+  #   best_for:
+  #     - "General reasoning+ workloads: multi-step logic, coding, tools, vision+text up to 128K"
+  #     - "When you need a strong default in the Gemma 4 line before scaling to 26B/31B"
+  #   not_for: >
+  #     Tasks that clearly need 256K context or the highest-capacity dense/MoE variants in this catalog
+  #     (use gemma4:26b, gemma4:31b, or a higher tier from the list when semantics demand it).
+
+  # - id: "ollama/gemma4:e2b"
+  #   tier: "reasoning"
+  #   task_type: "reasoning"
+  #   context_window: 128000
+  #   pricing:
+  #     input_per_1m_tokens:  "$0"
+  #     output_per_1m_tokens: "$0"
+  #   description: >
+  #     Gemma 4 Effective 2B (E2B): highly efficient architecture (~2.3B effective parameters) with
+  #     128K context, multimodal text, image, and audio. Built for strong quality per watt and fast
+  #     turnarounds on laptops and edge hardware while keeping modern agent and coding skills relative
+  #     to its class.
+  #   best_for:
+  #     - "Reasoning-tier tasks under tight latency or memory, still needing multimodal and audio"
+  #     - "High-throughput turns where a full dense 8B+ footprint is unnecessary"
+  #   not_for: >
+  #     Problems that clearly require the deepest reasoning or largest context in this catalog;
+  #     step up to gemma4:latest, gemma4:e4b, or higher-tier entries when the message semantics imply it.
+
+  # - id: "ollama/gemma4:e4b"
+  #   tier: "reasoning+"
+  #   task_type: "reasoning+"
+  #   context_window: 128000
+  #   pricing:
+  #     input_per_1m_tokens:  "$0"
+  #     output_per_1m_tokens: "$0"
+  #   description: >
+  #     Gemma 4 Effective 4B (E4B): larger effective capacity than E2B (~4.5B effective), same 128K
+  #     context and multimodal text, image, and audio. Stronger reasoning and coding headroom than E2B
+  #     while remaining edge-oriented.
+  #   best_for:
+  #     - "Reasoning+ class on edge-class hardware with audio and vision in the loop"
+  #     - "A clear step above E2B when synthesis or tool depth increases"
+  #   not_for: >
+  #     Workloads that plainly need 256K context or MoE-scale capacity; prefer gemma4:26b or gemma4:31b.
+
+  # - id: "ollama/gemma4:26b"
+  #   tier: "reasoning+"
+  #   task_type: "reasoning+"
+  #   context_window: 262144
+  #   pricing:
+  #     input_per_1m_tokens:  "$0"
+  #     output_per_1m_tokens: "$0"
+  #   description: >
+  #     Gemma 4 26B mixture-of-experts: large total parameter count with efficient active compute,
+  #     256K context, multimodal text and image. Workstation-class local execution with frontier-leaning
+  #     scores on reasoning, coding, and agent benchmarks versus smaller Gemma 4 variants.
+  #   best_for:
+  #     - "Long-context reasoning+, heavy coding, and multi-step agents within 256K"
+  #     - "When MoE efficiency matters but capability must stay near the top of the Gemma 4 range"
+  #   not_for: >
+  #     When the dense 31B profile or an external complex-tier model is explicitly a better semantic fit.
+
+  # - id: "ollama/gemma4:31b"
+  #   tier: "complex"
+  #   task_type: "complex"
+  #   context_window: 262144
+  #   pricing:
+  #     input_per_1m_tokens:  "$0"
+  #     output_per_1m_tokens: "$0"
+  #   description: >
+  #     Gemma 4 31B dense: top of the workstation-focused Gemma 4 line in this catalog, 256K context,
+  #     multimodal text and image. Maximum depth in the family for long documents, demanding coding,
+  #     and intricate tool orchestration before considering non-Gemma complex-tier options.
+  #   best_for:
+  #     - "Hardest Gemma-local workloads: long coherent context, demanding synthesis, strong tool chains"
+  #     - "When only the largest dense Gemma 4 variant is appropriate"
+  #   not_for: >
+  #     When a listed complex-tier non-Gemma model better matches cost, policy, or benchmark needs for the same task shape.
+
+  # ---------------------------------------------------------------------------
+  # TIER simple — Qwen3.5 Plus (2026-02-15)
   # ---------------------------------------------------------------------------
   - id: "qwen/qwen3.5-plus-02-15"
     tier: "simple"
@@ -33,7 +134,7 @@ models:
     description: >
       Qwen3.5 Plus (2026-02-15) by Qwen — native vision-language, hybrid linear attention + sparse MoE.
       Strong leap vs Qwen 3 in text and multimodal. Use for the SIMPLE tier only: minimal agentic load.
-      1,000,000 context. $0.26/$1.56 per 1M tokens (OpenRouter).
+      1,000,000 context. $0.26/$1.56 per 1M tokens.
 
       PATTERNS FOR THIS MODEL (simple tier):
         - Greetings, small talk, thank-you, confirmations without ERP depth
@@ -49,8 +150,7 @@ models:
       anything that fits reasoning (397B) or reasoning+ (Kimi) — escalate.
 
   # ---------------------------------------------------------------------------
-  # TIER reasoning — Qwen3.5 397B-A17B (DEFAULT quando classificador não escolhe simple)
-  # Vision-language, MoE + linear attention; strong code, agents, tool use; 262K context
+  # TIER reasoning — Qwen3.5 397B-A17B (default fallback)
   # ---------------------------------------------------------------------------
   - id: "qwen/qwen3.5-397b-a17b"
     tier: "reasoning"
@@ -64,7 +164,7 @@ models:
       (linear attention + sparse mixture-of-experts) for higher inference efficiency.
       State-of-the-art across language understanding, logical reasoning, code generation,
       agent tasks, image and video understanding, and GUI interactions. Strong code and
-      agent generalization. 262,144 context. $0.39/$2.34 per 1M tokens (OpenRouter).
+      agent generalization. 262,144 context. $0.39/$2.34 per 1M tokens.
 
       PATTERNS FOR THIS MODEL (reasoning tier — not simple):
         - User asks a direct question answerable from the ERP with 1-5 linear tool calls
@@ -87,9 +187,8 @@ models:
       conditional workflows, deep Many2one resolution,
       aggregation across 3+ different Agiweb models.
 
-
   # ---------------------------------------------------------------------------
-  # TIER 2 — Kimi K2.5 — reasoning+ (activo)
+  # TIER reasoning+ — Kimi K2.5
   # ---------------------------------------------------------------------------
   - id: "moonshotai/kimi-k2.5"
     tier: "reasoning+"
@@ -123,8 +222,7 @@ models:
       re-planning mid-execution.
 
   # ---------------------------------------------------------------------------
-  # TIER 3 — GPT-5.4 Mini
-  # Production balance — complex workflows, critical quality
+  # TIER complex — GPT-5.4 Mini
   # ---------------------------------------------------------------------------
   - id: "openai/gpt-5.4-mini"
     tier: "complex"
@@ -155,10 +253,8 @@ models:
       Tasks that Qwen Plus (simple), Qwen 397B (reasoning) or Kimi (reasoning+) can handle. Escalate only when necessary.
       Do not use as default — reserve for genuinely complex or high-stakes requests.
 
-
   # ---------------------------------------------------------------------------
-  # TIER 4 — Claude Sonnet 4.6 (LAST RESORT)
-  # Frontier agentic — self-correction, 1M context, explicit user request only
+  # TIER frontier — Claude Sonnet 4.6 (disabled in catalog — uncomment to enable)
   # ---------------------------------------------------------------------------
   # - id: "anthropic/claude-sonnet-4.6"
   #   tier: "frontier"
@@ -172,7 +268,7 @@ models:
   #     professional work. 1M context. Excellent at iterative development, complex codebase
   #     navigation, end-to-end project management, polished document creation and computer use.
   #     $3.00/$15.00 per 1M tokens.
-
+  #
   #     USE ONLY WHEN:
   #       - User explicitly requests Claude, frontier tier, or maximum capability — NOT "reasoning+"
   #         (reasoning+ in product language = Kimi K2.5 moonshotai/kimi-k2.5, see tier reasoning+)
@@ -191,31 +287,24 @@ models:
   #     Costs ~6.4x more than Qwen 397B-A17B on output tokens. ABSOLUTE LAST RESORT.
   #     Only escalate when the user explicitly requests it or complexity is genuinely frontier.
 
-
 # =============================================================================
 # FALLBACK MODEL
 # Used when the classifier cannot determine the tier with confidence.
-# Qwen3.5 397B-A17B — default reasoning tier, 262K context, strong agents/code/VL.
 # =============================================================================
 default_model: "qwen/qwen3.5-397b-a17b"
 
 
 # =============================================================================
-# PRICING SUMMARY (OpenRouter — Feb 2026 listing)
+# PRICING SUMMARY (reference — output $/1M vs Qwen 397B $2.34)
 # =============================================================================
 #
-#  Model                              | Context | Input /1M | Output /1M | Ratio vs 397B (out $2.34)
-#  -----------------------------------|---------|-----------|------------|---------------------------
-#  qwen/qwen3.5-plus-02-15            | 1M      | $0.26     | $1.56      | 0.67x (tier simple)
-#  qwen/qwen3.5-397b-a17b             | 262K    | $0.39     | $2.34      | 1x   (tier reasoning, default fallback)
+#  Model                              | Context | Input /1M | Output /1M | Ratio vs 397B (out)
+#  -----------------------------------|---------|-----------|------------|---------------------
+#  qwen/qwen3.5-plus-02-15            | 1M      | $0.26     | $1.56      | 0.67x (simple)
+#  qwen/qwen3.5-397b-a17b             | 262K    | $0.39     | $2.34      | 1x   (default fallback)
 #  moonshotai/kimi-k2.5               | 262K    | $0.45     | $2.20      | 0.94x (reasoning+)
 #  openai/gpt-5.4-mini                | 400K    | $0.75     | $4.50      | 1.92x
-#  anthropic/claude-sonnet-4.6        | 1M      | $3.00     | $15.00     | 6.41x (last resort)
+#  anthropic/claude-sonnet-4.6        | 1M      | $3.00     | $15.00     | 6.41x (if enabled)
+#  Gemma 4 variants                   | 128–256K| $0        | $0         | n/a (listed $0)
 #
-#  EXPECTED DISTRIBUTION (target):
-#    parte das queries → Qwen Plus     ($1.56/M — simple)
-#    parte → Qwen 397B-A17B            ($2.34/M — reasoning)
-#    ~15% → Kimi K2.5                  ($2.20/M — reasoning+)
-#     ~4% → GPT Mini                   ($4.50/M)
-#     ~1% → Sonnet                    (explicit user request only)
 # =============================================================================

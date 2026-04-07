@@ -28,6 +28,7 @@ Variáveis opcionais (têm default):
     LOG_LEVEL        — default info
     UPSTREAM_TIMEOUT — default 120 (segundos)
     UPSTREAM_URL     — default https://openrouter.ai/api/v1
+    OLLAMA_BASE_URL  — opcional no gateway: base do Ollama (ex. http://localhost:11434) para modelos id ollama/…
     ACCUMULATOR_IDLE_TTL_SECONDS — inatividade máxima do balde (ver accumulator)
     OPENROUTER_MANAGEMENT_API_KEY (opcional), OPENROUTER_CREDITS_* , OPENROUTER_ROUTER_BUDGET_* — créditos / router económico
     GATEWAY_PREMIUM_MODEL + ALLOWLIST + FALLBACK — Claude só para alguns users; outros → Kimi (default)
@@ -61,6 +62,21 @@ class Settings(BaseSettings):
     upstream_timeout: int = Field(
         default=120,
         description="Timeout em segundos para calls ao upstream",
+    )
+    ollama_base_url: Optional[str] = Field(
+        default=None,
+        description=(
+            "Base do Ollama sem path /v1 (ex. http://localhost:11434 ou "
+            "http://host.docker.internal:11434). Usado para model_id ollama/… ."
+        ),
+    )
+    ollama_legacy_strip_stream_options: bool = Field(
+        default=False,
+        description=(
+            "Se true: não envia stream_options (include_usage) para Ollama. "
+            "Use só se versões antigas do Ollama devolverem 400; com false, "
+            "streaming pede usage no chunk final para o centro de custos."
+        ),
     )
     openrouter_management_api_key: Optional[str] = Field(
         default=None,

@@ -63,7 +63,13 @@ def _load_config() -> dict:
 _CONFIG        = _load_config()
 _MODELS        = _CONFIG["models"]
 _DEFAULT_MODEL = _CONFIG["default_model"]
-_VALID_IDS     = {m["id"] for m in _MODELS}
+_VALID_IDS: set[str] = set()
+for m in _MODELS:
+    mid = m["id"]
+    _VALID_IDS.add(mid)
+    # Alias explícito openrouter/… (mesmo modelo OpenRouter que o id sem prefixo)
+    if not mid.startswith("ollama/") and not mid.startswith("openrouter/"):
+        _VALID_IDS.add(f"openrouter/{mid}")
 
 # Modelo fixo do gateway (X-Conversation-Id: generate-title). Não está em models_config.yaml
 # para não entrar no prompt do classificador; preços só em get_model_info abaixo.
@@ -102,8 +108,12 @@ def get_model_info(model_id: str) -> Optional[dict]:
             "input_per_1m_tokens":  0.10,
             "output_per_1m_tokens": 0.40,
         }
+    lookup = model_id
+    if model_id.startswith("openrouter/"):
+        lookup = model_id[len("openrouter/") :]
     for m in _MODELS:
-        if m.get("id") == model_id:
+        mid = m.get("id")
+        if mid == model_id or mid == lookup:
             pricing = m.get("pricing") or {}
             return {
                 "id":                   model_id,

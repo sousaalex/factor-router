@@ -10,7 +10,7 @@ Fluxo por call ao LLM:
        - Tem     → call seguinte do mesmo turno → usa model_id do balde
     3. Injeta o model_id real no body (substitui o que a app enviou)
     4. Adiciona stream_options para garantir tokens reais no chunk final
-    5. Faz proxy ao OpenRouter (stream SSE ou JSON completo)
+    5. Faz proxy ao provider (OpenRouter ou Ollama via ollama/…) — stream SSE ou JSON completo
     6. Extrai tokens da resposta e regista no acumulador
     7. Se finish_reason=stop → flush do balde → grava no Postgres via usage/service.py
 """
@@ -32,6 +32,11 @@ from src.gateway.key_store import get_key_store
 from src.gateway.model_policy import (
     apply_premium_model_policy,
     cap_model_for_low_openrouter_credit,
+)
+from src.gateway.provider_upstream import (
+    UpstreamTarget,
+    body_for_upstream_proxy,
+    resolve_upstream,
 )
 from src.gateway.openai_message_content import flatten_openai_message_content
 from src.router.router import GATEWAY_TITLE_MODEL_ID, route as router_route
@@ -188,6 +193,7 @@ async def _proxy_stream(
     body: dict,
     ctx: GatewayContext,
     settings: Settings,
+    upstream_target: UpstreamTarget,
 ) -> StreamingResponse:
     """
     Faz proxy de um request com stream=True.
@@ -206,13 +212,14 @@ async def _proxy_stream(
         is_last_call      = False
         last_stream_touch = 0.0
 
+        work = body_for_upstream_proxy(body, upstream_target)
         try:
             async with httpx.AsyncClient(timeout=settings.upstream_timeout) as client:
                 async with client.stream(
                     "POST",
-                    f"{settings.upstream_url}/chat/completions",
-                    headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
-                    json=body,
+                    upstream_target.chat_completions_url,
+                    headers=upstream_target.headers,
+                    json=work,
                 ) as upstream:
 
                     if upstream.status_code >= 400:
@@ -330,6 +337,7 @@ async def _proxy_json(
     body: dict,
     ctx: GatewayContext,
     settings: Settings,
+    upstream_target: UpstreamTarget,
 ) -> JSONResponse:
     """
     Faz proxy de um request com stream=False.
@@ -342,12 +350,13 @@ async def _proxy_json(
         _periodic_bucket_touch(bid, accumulator)
     )
 
+    work = body_for_upstream_proxy(body, upstream_target)
     try:
         async with httpx.AsyncClient(timeout=settings.upstream_timeout) as client:
             upstream = await client.post(
-                f"{settings.upstream_url}/chat/completions",
-                headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
-                json=body,
+                upstream_target.chat_completions_url,
+                headers=upstream_target.headers,
+                json=work,
             )
     except httpx.TimeoutException:
         raise HTTPException(
@@ -589,12 +598,27 @@ async def handle_chat_completions(
     upstream_body = {
         **body,
         "model": model_id,                           # substitui o model da app
-        "stream_options": {"include_usage": True},   # tokens reais no chunk final
+        "stream_options": {"include_usage": True},   # tokens reais no chunk final (OpenRouter)
         "messages": messages,                        # passa as mensagens corrigidas
     }
+    # FIX: Alibaba/Qwen em "thinking mode" rejeita tool_choice=required ou object.
+    # Para manter compatibilidade entre agentes SDKs diferentes, degradamos para auto.
+    tool_choice = upstream_body.get("tool_choice")
+    model_l = str(model_id).lower()
+    if ("alibaba" in model_l or "qwen" in model_l) and (
+        tool_choice == "required" or isinstance(tool_choice, dict)
+    ):
+        logger.warning(
+            "[Proxy] tool_choice=%r incompatível com thinking mode no model=%s; a usar 'auto'.",
+            tool_choice,
+            model_id,
+        )
+        upstream_body["tool_choice"] = "auto"
+
+    upstream_target = resolve_upstream(model_id, settings)
 
     # ── 4. Proxy ─────────────────────────────────────────────────────────────
     if is_stream:
-        return await _proxy_stream(upstream_body, ctx, settings)
+        return await _proxy_stream(upstream_body, ctx, settings, upstream_target)
     else:
-        return await _proxy_json(upstream_body, ctx, settings)
+        return await _proxy_json(upstream_body, ctx, settings, upstream_target)

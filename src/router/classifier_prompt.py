@@ -1,10 +1,10 @@
 """
 Factor AI — Classifier Prompt
 -------------------------------
-Constrói os prompts para o classificador.
+Builds system and user prompts for the routing classifier.
 """
 
-# Número esperado de tool calls por tier — usado no prompt
+# Expected tool-call bands per tier (prompt hint)
 TIER_TOOL_CALLS = {
     "simple":     "0-2",
     "vl-free":    "0-4",
@@ -14,7 +14,7 @@ TIER_TOOL_CALLS = {
     "frontier":   "10+",
 }
 
-# Contexto do agente em inglês — entra no prompt do classificador
+# Agent context (English) — injected into the classifier prompt
 AGENT_CONTEXT = """
 AGENT CONTEXT:
   The Severino Agent operates on top of Agiweb.
@@ -24,7 +24,7 @@ AGENT CONTEXT:
   The agent can execute up to 15 chained tool calls per request.
 """
 
-# System prompt do classificador — inglês puro, raciocínio em 5 passos
+# Classifier system prompt — English, five-step reasoning scaffold
 CLASSIFIER_SYSTEM_PROMPT = """You are a model routing classifier for the Severino Agent.
 
 Your ONLY job is to read the user message and decide which LLM model is best suited,
@@ -83,39 +83,39 @@ PRINCIPLE: Good, Clean, and Cheap.
 
 RULES:
   - Reply with ONLY a valid JSON object. No explanation. No markdown. No extra text.
-  - Format: {{"model": "provider/model-id"}}
-  - Valid model IDs (use exactly one): {valid_model_ids}
+  - Format: {{"model": "<exact_model_id>"}}
+  - Valid model IDs (copy one exactly from this list): {valid_model_ids}
   - When in doubt, use the default: {default_model}
 
 AVAILABLE MODELS:
 {models_description}
 """
 
-LOW_OPENROUTER_BALANCE_BLOCK = """
+LOW_BUDGET_BLOCK = """
 ---
-OPENROUTER PREPAID BALANCE IS LOW (budget mode - act now):
-  The organization's OpenRouter credit remaining is at or below the configured threshold.
-  Minimize cost while still answering correctly:
+ORGANIZATION BUDGET MODE (remaining balance at or below threshold — prioritize cost-aware routing):
+  Minimize listed token cost while preserving correctness.
   - Prefer qwen/qwen3.5-plus-02-15 for truly simple / chat-only turns; else qwen/qwen3.5-397b-a17b for light ERP.
   - Use moonshotai/kimi-k2.5 only when Many2one resolution or multi-step synthesis clearly needs reasoning+.
   - Do NOT pick openai/gpt-5.4-mini unless incorrect output would cause serious business harm
     AND Qwen 397B (reasoning) / Kimi are clearly insufficient for the workflow.
   - Do NOT pick anthropic/claude-sonnet-4.6 unless the user explicitly asks for Claude, Sonnet,
     or "frontier" / maximum capability by name.
+  - Prefer catalog entries with $0 listed cost when they genuinely satisfy the same semantic tier.
 ---
 """
 
-# User prompt — inglês, inclui estimativa de tokens
+# User prompt — English, includes token estimates
 CLASSIFIER_USER_PROMPT = """User message: "{user_message}"
 
 Estimated tokens: input ~{est_input}, output ~{est_output}, total ~{est_total}.
 Consider each model's context window and cost when deciding.
 
-Reply with ONLY valid JSON: {{"model": "provider/model-id"}}"""
+Reply with ONLY valid JSON: {{"model": "<exact_model_id>"}}"""
 
 
 def _format_context_window(n) -> str:
-    """Formata o context window para display no prompt."""
+    """Format context window size for display in the prompt."""
     if n is None:
         return "?"
     if isinstance(n, int):
@@ -128,10 +128,7 @@ def _format_context_window(n) -> str:
 
 
 def build_models_description(models: list[dict]) -> str:
-    """
-    Constrói a descrição completa de cada modelo para o classificador.
-    Toda a descrição está em inglês — entra directamente no prompt da rede neural.
-    """
+    """Build per-model text blocks for the classifier (English content from YAML)."""
     lines = []
     for m in models:
         tier        = m.get("tier", "?")
@@ -167,7 +164,7 @@ def build_models_description(models: list[dict]) -> str:
 
 
 def _valid_model_ids(models: list[dict]) -> str:
-    """Devolve os IDs válidos formatados para o prompt."""
+    """Format valid model IDs for the prompt."""
     return ", ".join(f'"{m["id"]}"' for m in models)
 
 
@@ -181,13 +178,9 @@ def build_classifier_prompt(
     openrouter_balance_low: bool = False,
 ) -> tuple[str, str]:
     """
-    Constrói o system prompt e o user prompt para o classificador Ollama.
+    Build (system_prompt, user_prompt) for the routing classifier.
 
-    Tudo o que entra na rede neural está em inglês.
-    O classificador raciocina em 5 passos antes de decidir o modelo.
-
-    Returns:
-        (system_prompt, user_prompt)
+    All neural-facing text is English.
     """
     models_desc = build_models_description(models)
     valid_ids   = _valid_model_ids(models)
@@ -200,7 +193,7 @@ def build_classifier_prompt(
         models_description=models_desc,
     )
     if openrouter_balance_low:
-        system = system + "\n" + LOW_OPENROUTER_BALANCE_BLOCK.strip() + "\n"
+        system = system + "\n" + LOW_BUDGET_BLOCK.strip() + "\n"
 
     user = CLASSIFIER_USER_PROMPT.format(
         user_message=user_message,

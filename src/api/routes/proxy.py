@@ -50,7 +50,8 @@ async def chat_completions(
     ctx: Annotated[GatewayContext, Depends(GatewayContext.from_headers)],
 ):
     """
-    Proxy transparente para o OpenRouter com routing automático de modelos.
+    Proxy OpenAI-compatible: OpenRouter (default) ou Ollama local para model_id `ollama/…`
+    quando OLLAMA_BASE_URL está definido. Routing automático de modelos.
     O app_id vem sempre da API Key — nunca de headers enviados pelo agente.
     """
     # Injeta o app_id da API Key no contexto
