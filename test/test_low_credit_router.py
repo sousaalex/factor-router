@@ -37,8 +37,8 @@ class TestCapLowCredit(unittest.TestCase):
 
     def test_simple_tier_unchanged_under_cap(self) -> None:
         self.assertEqual(
-            cap_model_for_low_openrouter_credit("qwen/qwen3.5-plus-02-15", balance_low=True),
-            "qwen/qwen3.5-plus-02-15",
+            cap_model_for_low_openrouter_credit("qwen/qwen3.5-122b-a10b", balance_low=True),
+            "qwen/qwen3.5-122b-a10b",
         )
 
     def test_reasoning_plus_unchanged(self) -> None:

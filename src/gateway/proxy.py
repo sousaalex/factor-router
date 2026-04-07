@@ -602,18 +602,22 @@ async def handle_chat_completions(
         "messages": messages,                        # passa as mensagens corrigidas
     }
     # FIX: Alibaba/Qwen em "thinking mode" rejeita tool_choice=required ou object.
-    # Para manter compatibilidade entre agentes SDKs diferentes, degradamos para auto.
+    # Não podemos degradar para "auto" porque alguns agentes exigem tool-call obrigatório.
+    # Nesses casos, reencaminhamos para um modelo compatível com tool_choice required.
     tool_choice = upstream_body.get("tool_choice")
     model_l = str(model_id).lower()
     if ("alibaba" in model_l or "qwen" in model_l) and (
         tool_choice == "required" or isinstance(tool_choice, dict)
     ):
         logger.warning(
-            "[Proxy] tool_choice=%r incompatível com thinking mode no model=%s; a usar 'auto'.",
+            "[Proxy] tool_choice=%r incompatível com thinking mode no model=%s; "
+            "a usar fallback compatível moonshotai/kimi-k2.5.",
             tool_choice,
             model_id,
         )
-        upstream_body["tool_choice"] = "auto"
+        model_id = "moonshotai/kimi-k2.5"
+        upstream_body["model"] = model_id
+        await accumulator.set_bucket_model_id(bid, model_id)
 
     upstream_target = resolve_upstream(model_id, settings)
 
