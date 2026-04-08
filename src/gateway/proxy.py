@@ -23,8 +23,8 @@ import time
 from typing import AsyncIterator, TYPE_CHECKING
 
 import httpx
-from fastapi import HTTPException, status
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi import HTTPException, Request, status
+from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 
 from src.gateway.accumulator import get_accumulator
 from src.gateway.config import Settings
@@ -68,6 +68,50 @@ def _app_budget_exceeded_body(
         "spend_cap_usd":   spend_cap_usd,
         "spent_usd_total": spent_usd_total,
     }
+
+
+async def _enforce_app_budget_or_raise(ctx: "GatewayContext") -> None:
+    """
+    Aplica o mesmo teto USD por app usado no chat.
+    Lança HTTPException/JSONResponse em caso de app inválida/inativa/excedida.
+    """
+    try:
+        spend_status = await get_key_store().get_app_spend_status(ctx.app_id)
+    except Exception as e:
+        logger.exception("[Proxy] Falha ao ler orçamento da app %s: %s", ctx.app_id, e)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "error": "budget_check_unavailable",
+                "message": "Could not verify app usage limit. Try again later.",
+            },
+        ) from e
+
+    if spend_status is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "app_not_found",
+                "message": "App associated with this key was not found.",
+            },
+        )
+    if not spend_status["is_active"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "app_disabled",
+                "message": "This app is disabled.",
+            },
+        )
+    if spend_status["spent_usd_total"] >= spend_status["spend_cap_usd"]:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=_app_budget_exceeded_body(
+                ctx.app_id,
+                spend_status["spend_cap_usd"],
+                spend_status["spent_usd_total"],
+            ),
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -626,3 +670,179 @@ async def handle_chat_completions(
         return await _proxy_stream(upstream_body, ctx, settings, upstream_target)
     else:
         return await _proxy_json(upstream_body, ctx, settings, upstream_target)
+
+
+async def handle_audio_transcriptions(
+    request: Request,
+    ctx: "GatewayContext",
+    settings: Settings,
+) -> JSONResponse | PlainTextResponse:
+    """
+    Proxy OpenAI-compatible para POST /v1/audio/transcriptions (Factor Whisper).
+    Exige os mesmos headers X-* para manter rastreio de custos por turno.
+    """
+    await _enforce_app_budget_or_raise(ctx)
+
+    # Debug: log request details
+    content_type = request.headers.get("content-type", "not set")
+    logger.info(f"[AudioTranscription] Content-Type: {content_type}")
+    logger.info(f"[AudioTranscription] Method: {request.method}")
+    logger.info(f"[AudioTranscription] URL: {request.url}")
+    
+    # Check if content-type is multipart
+    if not content_type.startswith("multipart/form-data"):
+        logger.error(f"[AudioTranscription] Invalid Content-Type: {content_type}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "invalid_content_type",
+                "message": f"Content-Type must be multipart/form-data, got: {content_type}",
+            },
+        )
+
+    try:
+        # Debug: try to read raw body first
+        raw_body = await request.body()
+        logger.info(f"[AudioTranscription] Raw body length: {len(raw_body)} bytes")
+        
+        # Now try to parse form
+        form = await request.form()
+        logger.info(f"[AudioTranscription] Form keys: {list(form.keys())}")
+    except Exception as e:
+        logger.exception(f"[AudioTranscription] Form parse error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "invalid_multipart",
+                "message": f"Body deve ser multipart/form-data válido. Error: {str(e)}",
+            },
+        ) from e
+
+    upload = form.get("file")
+    if upload is None or not hasattr(upload, "filename"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "missing_file",
+                "message": "Campo 'file' é obrigatório em multipart/form-data.",
+            },
+        )
+
+    # Campos OpenAI-compat aceites pelo upstream.
+    data: dict[str, str] = {}
+    for key in ("model", "response_format", "language", "prompt", "temperature"):
+        value = form.get(key)
+        if value is not None:
+            data[key] = str(value)
+    if "model" not in data:
+        data["model"] = "whisper-1"
+
+    # Starlette UploadFile
+    audio_bytes = await upload.read()
+    if not audio_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": "empty_file", "message": "O ficheiro de áudio está vazio."},
+        )
+
+    files = {
+        "file": (
+            upload.filename or "audio.bin",
+            audio_bytes,
+            getattr(upload, "content_type", None) or "application/octet-stream",
+        )
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=settings.whisper_upstream_timeout) as client:
+            upstream = await client.post(
+                settings.whisper_upstream_url,
+                data=data,
+                files=files,
+            )
+    except httpx.TimeoutException as e:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail={
+                "error": "upstream_timeout",
+                "message": f"Whisper upstream não respondeu em {settings.whisper_upstream_timeout}s.",
+            },
+        ) from e
+    except httpx.HTTPError as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "error": "upstream_unreachable",
+                "message": f"Falha ao contactar Whisper upstream: {e}",
+            },
+        ) from e
+
+    if upstream.status_code >= 400:
+        content_type = upstream.headers.get("content-type", "")
+        if "application/json" in content_type:
+            try:
+                payload = upstream.json()
+            except Exception:
+                payload = {"error": "upstream_error", "message": upstream.text}
+            return JSONResponse(status_code=upstream.status_code, content=payload)
+        return JSONResponse(
+            status_code=upstream.status_code,
+            content={"error": "upstream_error", "message": upstream.text},
+        )
+
+    response_format = (data.get("response_format") or "json").lower()
+    model_id = "whisper/whisper-1"
+    prompt_tokens = completion_tokens = total_tokens = 0
+    meta: dict[str, object] = {
+        "source": "whisper_upstream",
+        "whisper_upstream_url": settings.whisper_upstream_url,
+        "audio_size_bytes": len(audio_bytes),
+        "response_format": response_format,
+    }
+
+    if response_format == "text":
+        text_out = upstream.text
+        completion_tokens = len(text_out.split())
+        total_tokens = completion_tokens
+        meta["text_chars"] = len(text_out)
+        response = PlainTextResponse(content=text_out, status_code=upstream.status_code)
+    else:
+        payload = upstream.json()
+        usage = payload.get("usage") or {}
+        prompt_tokens = int(usage.get("prompt_tokens_estimated") or 0)
+        completion_tokens = int(usage.get("completion_tokens_estimated") or 0)
+        total_tokens = int(
+            usage.get("total_tokens_estimated")
+            or (prompt_tokens + completion_tokens)
+        )
+        model_id = f"whisper/{payload.get('model') or 'whisper-1'}"
+        for k in ("language_detected", "duration_seconds", "audio_size_bytes"):
+            if k in payload:
+                meta[k] = payload[k]
+        response = JSONResponse(content=payload, status_code=upstream.status_code)
+
+    try:
+        from src.usage.service import record_turn_usage
+
+        await record_turn_usage(
+            turn_id=ctx.accumulator_bucket_id,
+            app_id=ctx.app_id,
+            chat_session_id=ctx.session_id,
+            conversation_id=ctx.conversation_id,
+            user_message=ctx.user_message or "(audio transcription)",
+            user_id=ctx.user_id,
+            user_name=ctx.user_name,
+            user_email=ctx.user_email,
+            company_id=ctx.company_id,
+            company_name=ctx.company_name,
+            model_id=model_id,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+            tool_calls_count=0,
+            meta=meta,
+        )
+    except Exception as e:
+        logger.warning("[AudioProxy] Falha ao registar usage turn=%s: %s", ctx.turn_id[:8], e)
+
+    return response

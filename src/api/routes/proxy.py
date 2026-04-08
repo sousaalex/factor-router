@@ -60,3 +60,27 @@ async def chat_completions(
     from src.gateway.config import get_settings
     from src.gateway.proxy import handle_chat_completions
     return await handle_chat_completions(request, ctx, get_settings())
+
+
+@router.post(
+    "/audio/transcriptions",
+    summary="Audio transcriptions (OpenAI-compatible)",
+    description="""
+Proxy para transcrição de áudio em formato OpenAI.
+
+Requer `Authorization: Bearer <api_key>` e os mesmos headers `X-*` do chat
+para rastreio/observabilidade por turno.
+    """,
+    tags=["proxy"],
+)
+async def audio_transcriptions(
+    request: Request,
+    auth: Annotated[AuthenticatedApp, Depends(authenticate)],
+    ctx: Annotated[GatewayContext, Depends(GatewayContext.from_headers)],
+):
+    # Injeta o app_id da API Key no contexto
+    ctx.app_id = auth.app_id
+
+    from src.gateway.config import get_settings
+    from src.gateway.proxy import handle_audio_transcriptions
+    return await handle_audio_transcriptions(request, ctx, get_settings())
