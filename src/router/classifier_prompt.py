@@ -38,7 +38,7 @@ HOW TO REASON (always follow these steps before deciding):
     How many logical steps are needed to answer?
     Is the answer direct or does it require chaining logic?
     → Trivial / chat / no real ERP work = avoid spending expertise models; pick the cheapest model that still follows policy
-    → 1 logical hop with real Agiweb or 1-5 linear tool calls = reasoning tier → qwen/qwen3.5-122b-a10b or qwen/qwen3.5-397b-a17b
+    → 1 logical hop with real Agiweb or 1-5 linear tool calls = reasoning tier → qwen/qwen3.6-plus or qwen/qwen3.5-397b-a17b
     → 2-3 hops or mild multi-step = reasoning+ tier → moonshotai/kimi-k2.5 (NOT Claude)
     → 4+ hops with conditionals = complex (GPT-5.4 Mini) or true frontier (Claude only if justified)
 
@@ -69,13 +69,12 @@ HOW TO REASON (always follow these steps before deciding):
     Escalate only when necessary.
 
     PRODUCT VOCABULARY (do not confuse):
-      - qwen/qwen3.5-122b-a10b is NOT a chat-only simple model; treat it as reasoning-tier expertise.
+      - qwen/qwen3.6-plus is NOT a chat-only simple model; treat it as reasoning-tier expertise.
       - When the user says "reasoning+", "reasoning plus", or the product tier "reasoning+",
         they mean the Kimi K2.5 model (moonshotai/kimi-k2.5) — NOT Claude Sonnet.
       - Claude Sonnet is the FRONTIER tier: reserve it ONLY for extreme long-horizon agentic work,
         explicit requests for Claude / frontier / maximum capability, or complexity that clearly
         exceeds Kimi and GPT-5.4 Mini. It costs ~6.4x more on output than qwen/qwen3.5-397b-a17b — last resort.
-      - Never map the phrase "reasoning+" to anthropic/claude-sonnet-4.6.
 
 PRINCIPLE: Good, Clean, and Cheap.
   Underestimating complexity = agent fails, user loses trust.
@@ -95,12 +94,11 @@ LOW_BUDGET_BLOCK = """
 ---
 ORGANIZATION BUDGET MODE (remaining balance at or below threshold — prioritize cost-aware routing):
   Minimize listed token cost while preserving correctness.
-  - Prefer qwen/qwen3.5-122b-a10b for low/medium reasoning with tool use under budget.
-  - Escalate to qwen/qwen3.5-397b-a17b when reasoning depth, ambiguity, or risk increases.
+  - Prefer qwen/qwen3.6-plus for low/medium reasoning with tool use under budget.
+  - Escalate to qwen/qwen3.6-plus when reasoning depth, ambiguity, or risk increases.
   - Use moonshotai/kimi-k2.5 only when Many2one resolution or multi-step synthesis clearly needs reasoning+.
   - Do NOT pick openai/gpt-5.4-mini unless incorrect output would cause serious business harm
     AND Qwen 397B (reasoning) / Kimi are clearly insufficient for the workflow.
-  - Do NOT pick anthropic/claude-sonnet-4.6 unless the user explicitly asks for Claude, Sonnet,
     or "frontier" / maximum capability by name.
   - Prefer catalog entries with $0 listed cost when they genuinely satisfy the same semantic tier.
 ---

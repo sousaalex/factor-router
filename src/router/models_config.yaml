@@ -139,26 +139,28 @@ models:
   #     Broad business synthesis across multiple ERP domains, heavy multi-entity
   #     ambiguity, or deep conditional orchestration; escalate to reasoning+ or complex.
 
-  - id: "qwen/qwen3.5-122b-a10b"
+  - id: "qwen/qwen3.6-plus"
     tier: "reasoning"
     task_type: "reasoning"
     tool_calls: "1-5"
-    context_window: 262144
+    context_window: 1000000
     pricing:
-      input_per_1m_tokens:  "$0.26"
-      output_per_1m_tokens: "$2.08"
+      input_per_1m_tokens:  "$0.325"
+      output_per_1m_tokens: "$1.95"
     description: >
-      Qwen3.5 122B-A10B by Qwen. Hybrid linear attention + sparse MoE architecture.
-      Cost-efficient EXPERTISE model for real Agiweb work (not chat-only). Use for
-      direct operational tasks where quality must exceed chat-tier behavior but
-      the full 397B is overkill. 262K context. $0.26/$2.08 per 1M tokens.
+      Qwen3.6 Plus by Qwen. Hybrid linear attention + sparse mixture-of-experts routing.
+      Compared to the 3.5 series, it brings major gains in agentic coding, front-end
+      development, and overall reasoning, with a significantly improved vibe-coding
+      experience. Strong on complex tasks such as 3D scenes, games, and repository-level
+      problem solving (SWE-bench Verified 78.8). 1,000,000 context. $0.325/$1.95 per
+      1M tokens.
     best_for:
-      - "Reasoning-tier tasks with moderate tool depth and strong cost control"
-      - "Operational Agiweb turns: structured extraction, normalization, short multi-step actions"
-      - "When in doubt between this and 397B, prefer 122B if complexity and risk are low"
+      - "Reasoning-tier tasks with stronger coding output and robust cost control"
+      - "Agentic coding, front-end implementation, and repository-level problem solving"
+      - "Operational Agiweb turns that need higher capability than chat-tier models"
     not_for: >
-      Complex workflows with Many2one ambiguity, deeper conditional logic,
-      or broad cross-entity synthesis; escalate to 397B or Kimi when needed.
+      Long-horizon workflows with high ambiguity, deep conditional orchestration,
+      or broad cross-entity synthesis; escalate to 397B, Kimi, or complex tier as needed.
 
   - id: "qwen/qwen3.5-397b-a17b"
     tier: "reasoning"
@@ -307,7 +309,7 @@ models:
 # FALLBACK MODEL
 # Used when the classifier cannot determine the tier with confidence.
 # =============================================================================
-default_model: "qwen/qwen3.5-122b-a10b"
+default_model: "qwen/qwen3.6-plus"
 
 
 # =============================================================================
@@ -322,7 +324,7 @@ default_model: "qwen/qwen3.5-122b-a10b"
 #  vl-free     │ ollama/gemma4:31b               │ 256K    │ $0        │ $0
 #  reasoning+  │ x-ai/grok-4.1-fast              │ 2M      │ $0.20     │ $0.50
 #  reasoning   │ x-ai/grok-code-fast-1           │ 256K    │ $0.20     │ $1.50
-#  reasoning   │ qwen/qwen3.5-122b-a10b          │ 262K    │ $0.26     │ $2.08
+#  reasoning   │ qwen/qwen3.6-plus               │ 1M      │ $0.325    │ $1.95
 #  reasoning+  │ moonshotai/kimi-k2.5            │ 262K    │ $0.45     │ $2.20
 #  reasoning   │ qwen/qwen3.5-397b-a17b          │ 262K    │ $0.39     │ $2.34
 #  complex     │ openai/gpt-5.4-mini             │ 400K    │ $0.75     │ $4.50
