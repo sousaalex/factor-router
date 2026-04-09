@@ -3,21 +3,22 @@ src/api/routes/turns.py
 
 Turn Lifecycle Protocol — gestão explícita do ciclo de vida de um turno.
 
-Suporta dois padrões de loop agentic:
+Padrão MemGPT (Bluma, agentes tool-only):
+  O turno termina quando o agente chama uma tool terminal (ex: message(result)).
+  O agente declara o fim explicitamente via:
+  → POST /v1/turns/{turn_id}/end
 
-  Padrão ReAct (Severino AgiWeb, maioria dos agentes):
-    O turno termina quando o modelo produz finish_reason=stop.
-    O gateway detecta automaticamente — agente não precisa de chamar nada.
-
-  Padrão MemGPT (Bluma, agentes tool-only):
-    O turno termina quando o agente chama uma tool terminal (ex: message(result)).
-    O modelo nunca produz finish_reason=stop — o agente declara o fim explicitamente.
-    → POST /v1/turns/{turn_id}/end
+Fallback de segurança:
+  Se o agente não chamar o endpoint (crash, bug, rede), o TTL cleanup do gateway
+  (app.py _cleanup_loop) grava o turno após 15s de inatividade.
 
 Referência:
   MemGPT / Letta (2023-2025) — arquitectura stateful com send_message tool.
   O agente controla o seu próprio ciclo de vida via request_heartbeat.
   FactorRouter adopta o mesmo princípio: o agente declara o fim do turno.
+  
+NOTA: A detecção automática via finish_reason=stop foi removida para suportar
+agentes que produzem texto de assistente sem terminar o turno.
 """
 from __future__ import annotations
 
@@ -55,24 +56,23 @@ Declara explicitamente que um turno terminou e força o flush do centro de custo
 **Quando usar:**
 
 Usa este endpoint quando o teu agente segue o padrão **MemGPT/tool-only** —
-ou seja, o turno termina via uma tool call em vez de `finish_reason=stop`.
+ou seja, o turno termina quando o agente decide (ex: tool `message(result)`).
 
 Exemplos:
 - O Bluma termina quando chama `message(message_type=result)`
 - Agentes com `agent_end_turn` tool
 - Qualquer agente onde o loop é controlado pelo agente, não pelo modelo
 
-**Quando NÃO precisas:**
+**Importante:**
 
-Se o teu agente produz `finish_reason=stop` no último call ao LLM
-(padrão ReAct — Severino AgiWeb, maioria dos agentes OpenAI-style),
-o gateway detecta automaticamente e não precisas de chamar este endpoint.
+A detecção automática via `finish_reason=stop` foi **removida**.
+Obrigatório chamar este endpoint para fechar o turno explicitamente.
 
 **Garantia:**
 
 Mesmo que o agente não chame este endpoint, o gateway tem fallback por
 inatividade (TTL desde o último call ao LLM; ver accumulator) que grava
-tokens no DB. Este endpoint garante flush imediato e preciso.
+tokens no DB após 15s de inatividade. Este endpoint garante flush imediato.
 
 **Headers obrigatórios:** os mesmos 9 headers X-* do `/v1/chat/completions`.
     """,

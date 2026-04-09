@@ -12,7 +12,9 @@ Fluxo por call ao LLM:
     4. Adiciona stream_options para garantir tokens reais no chunk final
     5. Faz proxy ao provider (OpenRouter ou Ollama via ollama/…) — stream SSE ou JSON completo
     6. Extrai tokens da resposta e regista no acumulador
-    7. Se finish_reason=stop → flush do balde → grava no Postgres via usage/service.py
+    7. Flush do balde ocorre via:
+       - POST /v1/turns/{turn_id}/end (explícito, recomendado para MemGPT/tool-only)
+       - TTL cleanup (fallback — 15s de inatividade, ver app.py _cleanup_loop)
 """
 from __future__ import annotations
 
@@ -154,19 +156,7 @@ def _extract_usage_from_response(response_data: dict) -> tuple[int, int, int]:
     return prompt_tokens, completion_tokens, tool_calls_count
 
 
-def _is_final_chunk(chunk_data: dict) -> bool:
-    """
-    Verifica se este chunk SSE é o último do turno.
-    finish_reason=stop   → resposta final ao utilizador
-    finish_reason=length → limite de tokens atingido (também fecha o turno)
-    finish_reason=tool_calls NÃO fecha — o agente vai fazer outro call com tool_result
-    """
-    choices = chunk_data.get("choices") or []
-    for choice in choices:
-        finish_reason = choice.get("finish_reason")
-        if finish_reason in ("stop", "end_turn", "length"):
-            return True
-    return False
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -242,7 +232,11 @@ async def _proxy_stream(
     """
     Faz proxy de um request com stream=True.
     Passa chunks SSE ao agente sem buffering.
-    Extrai tokens e detecta o fim do turno (finish_reason=stop).
+    Extrai tokens para o acumulador.
+    
+    NOTA: O fim do turno NÃO é detectado automaticamente via finish_reason.
+    O agente deve chamar POST /v1/turns/{turn_id}/end quando terminar,
+    ou o TTL cleanup irá gravar o turno após 15s de inatividade.
     """
     accumulator = get_accumulator()
 
@@ -253,7 +247,6 @@ async def _proxy_stream(
         total_completion  = 0
         total_tool_calls  = 0
         tool_call_indices: set[int] = set()  # índices únicos de tool_calls no stream
-        is_last_call      = False
         last_stream_touch = 0.0
 
         work = body_for_upstream_proxy(body, upstream_target)
@@ -275,9 +268,8 @@ async def _proxy_stream(
                         #     error_body[:200],
                         # )
                         yield error_body
-                        # Força flush mesmo em erro — tokens foram consumidos
-                        # O balde pode ter tokens de calls anteriores do mesmo turno
-                        is_last_call = True
+                        # NOTA: não fazemos flush em erro — o turno pode continuar após erro transitório
+                        # O TTL cleanup ou /turns/{turn_id}/end irá gravar os tokens quando apropriado
                         return
 
                     bid = ctx.accumulator_bucket_id
@@ -297,19 +289,13 @@ async def _proxy_stream(
                         # Passa o chunk ao agente imediatamente
                         yield (raw_line + "\n\n").encode()
 
-                        # Tenta extrair tokens e detectar fim do turno
+                        # Tenta extrair tokens do chunk
                         if raw_line.startswith("data: "):
                             data_str = raw_line[6:].strip()
                             if data_str == "[DONE]":
-                                continue  # fim do stream SSE — não fecha o turno
-                                          # quem fecha é o finish_reason=stop no chunk anterior
+                                continue  # fim do stream SSE
                             try:
                                 chunk_data = json.loads(data_str)
-                                choices = chunk_data.get("choices") or []
-                                for choice in choices:
-                                    fr = choice.get("finish_reason")
-                                    #if fr:
-                                    #    print(f"[Proxy] finish_reason='{fr}' for turn [{ctx.turn_id[:8]}]")
                                 p, c, t = _extract_usage_from_chunk(chunk_data)
                                 total_prompt     += p
                                 total_completion += c
@@ -325,12 +311,6 @@ async def _proxy_stream(
                                         if idx is not None:
                                             tool_call_indices.add(idx)
                                 total_tool_calls = len(tool_call_indices)
-
-                                if _is_final_chunk(chunk_data):
-                                    is_last_call = True
-                                    #print(f"[Proxy] FINAL CHUNK detected for turn [{ctx.turn_id[:8]}] finish_reason=stop")
-
-                                #print(f"[Proxy] FINALLY turn [{ctx.turn_id[:8]}] is_last_call={is_last_call} total_prompt={total_prompt} total_completion={total_completion} total_tool_calls={total_tool_calls}")
 
                             except json.JSONDecodeError:
                                 pass
@@ -348,10 +328,10 @@ async def _proxy_stream(
                 completion_tokens=total_completion,
                 tool_calls_in_call=total_tool_calls,
             )
-            # finish_reason=stop → turno terminou → flush assíncrono
-            # finish_reason=tool_calls → agente vai fazer outro call → NÃO flush
-            if is_last_call:
-                _create_flush_task(bid)
+            # NOTA: flush automático por finish_reason foi removido.
+            # O turno só é fechado via:
+            #   1. POST /v1/turns/{turn_id}/end (explícito, recomendado para MemGPT)
+            #   2. TTL cleanup (fallback de segurança — 15s de inatividade)
 
     return StreamingResponse(
         generate(),
@@ -385,7 +365,11 @@ async def _proxy_json(
 ) -> JSONResponse:
     """
     Faz proxy de um request com stream=False.
-    Aguarda resposta completa, extrai tokens, faz flush.
+    Aguarda resposta completa e extrai tokens para o acumulador.
+    
+    NOTA: O fim do turno NÃO é detectado automaticamente via finish_reason.
+    O agente deve chamar POST /v1/turns/{turn_id}/end quando terminar,
+    ou o TTL cleanup irá gravar o turno após 15s de inatividade.
     """
     accumulator = get_accumulator()
     bid = ctx.accumulator_bucket_id
@@ -423,9 +407,8 @@ async def _proxy_json(
         #     upstream.status_code,
         #     ctx.turn_id[:8],
         # )
-        # Força flush mesmo em erro — tokens foram consumidos pelo provider
-        # O balde pode ter tokens de calls anteriores do mesmo turno agentic
-        _create_flush_task(bid)
+        # NOTA: não fazemos flush em erro — o turno pode continuar após erro transitório
+        # O TTL cleanup ou /turns/{turn_id}/end irá gravar os tokens quando apropriado
         return JSONResponse(
             status_code=upstream.status_code,
             content=upstream.json(),
@@ -441,15 +424,10 @@ async def _proxy_json(
         tool_calls_in_call=t,
     )
 
-    # Só faz flush quando o turno terminou (finish_reason=stop ou length).
-    # Se for tool_calls, o agente vai fazer mais calls com tool_results
-    # no mesmo X-Turn-Id — o balde mantém-se aberto para acumular.
-    finish_reason = (
-        (response_data.get("choices") or [{}])[0]
-        .get("finish_reason", "stop")
-    )
-    if finish_reason in ("stop", "end_turn", "length"):
-        _create_flush_task(bid)
+    # NOTA: flush automático por finish_reason foi removido.
+    # O turno só é fechado via:
+    #   1. POST /v1/turns/{turn_id}/end (explícito, recomendado para MemGPT)
+    #   2. TTL cleanup (fallback de segurança — 15s de inatividade)
 
     return JSONResponse(content=response_data)
 
