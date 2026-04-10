@@ -390,7 +390,7 @@ models:
 # FALLBACK MODEL
 # Used when the classifier cannot determine the tier with confidence.
 # =============================================================================
-default_model: "qwen/qwen3-coder-next"
+default_model: "moonshotai/kimi-k2.5"
 
 
 # =============================================================================
