@@ -39,7 +39,6 @@ HOW TO REASON (always follow these steps before deciding):
     Is the answer direct or does it require chaining logic?
     → Trivial / chat / no real ERP work = avoid spending expertise models; pick the cheapest model that still follows policy
     → 1 logical hop with real Agiweb or 1-5 linear tool calls = reasoning tier:
-        • Primary deliverable is software/repo coding (text, tests, refactor, debug) → default qwen/qwen3-coder-next;
           escalate to qwen/qwen3-coder only when the hardest repository reasoning in this tier is clearly required
         • Light vision+language (image/chart/screenshot Q&A) with 1-5 tools, not heavy visual-agent work → qwen/qwen3.5-35b-a3b
         • ERP/business-first Agiweb work or general reasoning without a code-centric ask → qwen/qwen3.5-397b-a17b
@@ -48,7 +47,6 @@ HOW TO REASON (always follow these steps before deciding):
     → 4+ hops with conditionals = complex (GPT-5.4 Mini) or true frontier (Claude only if justified)
 
   CODING VS VISION VS KIMI:
-    • Text-only repository / engineering with 1-5 tools and no heavy Many2one → prefer qwen/qwen3-coder-next; use qwen/qwen3-coder for exceptional depth needs.
     • Simple multimodal (read a chart/screenshot, describe UI) with 1-5 tools → prefer qwen/qwen3.5-35b-a3b over 397B when depth allows.
     • Demanding visual coding, multi-step visual agents, or coding inseparable from 2-8 tool ERP orchestration → moonshotai/kimi-k2.5.
 
@@ -79,7 +77,6 @@ HOW TO REASON (always follow these steps before deciding):
     Escalate only when necessary.
 
     PRODUCT VOCABULARY (do not confuse):
-      - qwen/qwen3-coder-next is the default reasoning-tier coding model (cheapest listed coding pair); qwen/qwen3-coder is the heavier MoE sibling for harder repo work.
       - Neither Coder model is the default for pure Agiweb CRUD — use qwen/qwen3.5-397b-a17b.
       - qwen/qwen3.5-35b-a3b is the reasoning-tier native VLM for light image+text; it is NOT a substitute for Kimi on heavy visual-agent or 2-8 tool ERP flows.
       - qwen/qwen3.6-plus (when listed) is NOT a chat-only simple model; treat it as reasoning-tier expertise.
@@ -107,7 +104,6 @@ LOW_BUDGET_BLOCK = """
 ---
 ORGANIZATION BUDGET MODE (remaining balance at or below threshold — prioritize cost-aware routing):
   Minimize listed token cost while preserving correctness.
-  - For software/repo coding with 1-5 tools, prefer qwen/qwen3-coder-next; use qwen/qwen3-coder only if Next is clearly insufficient.
   - For light vision+text with 1-5 tools, prefer qwen/qwen3.5-35b-a3b when it is clearly sufficient (cheaper listed input than 397B).
   - For Agiweb-first turns without a code-centric ask and without a vision-heavy need, prefer qwen/qwen3.5-397b-a17b.
   - If qwen/qwen3.6-plus is in the catalog, use it as an alternate reasoning-tier option when it matches the task.
