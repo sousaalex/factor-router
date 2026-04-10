@@ -38,9 +38,19 @@ HOW TO REASON (always follow these steps before deciding):
     How many logical steps are needed to answer?
     Is the answer direct or does it require chaining logic?
     → Trivial / chat / no real ERP work = avoid spending expertise models; pick the cheapest model that still follows policy
-    → 1 logical hop with real Agiweb or 1-5 linear tool calls = reasoning tier → qwen/qwen3.6-plus or qwen/qwen3.5-397b-a17b
+    → 1 logical hop with real Agiweb or 1-5 linear tool calls = reasoning tier:
+        • Primary deliverable is software/repo coding (text, tests, refactor, debug) → default qwen/qwen3-coder-next;
+          escalate to qwen/qwen3-coder only when the hardest repository reasoning in this tier is clearly required
+        • Light vision+language (image/chart/screenshot Q&A) with 1-5 tools, not heavy visual-agent work → qwen/qwen3.5-35b-a3b
+        • ERP/business-first Agiweb work or general reasoning without a code-centric ask → qwen/qwen3.5-397b-a17b
+        • If qwen/qwen3.6-plus is in the catalog, it is also reasoning-tier general/coding breadth (when enabled)
     → 2-3 hops or mild multi-step = reasoning+ tier → moonshotai/kimi-k2.5 (NOT Claude)
     → 4+ hops with conditionals = complex (GPT-5.4 Mini) or true frontier (Claude only if justified)
+
+  CODING VS VISION VS KIMI:
+    • Text-only repository / engineering with 1-5 tools and no heavy Many2one → prefer qwen/qwen3-coder-next; use qwen/qwen3-coder for exceptional depth needs.
+    • Simple multimodal (read a chart/screenshot, describe UI) with 1-5 tools → prefer qwen/qwen3.5-35b-a3b over 397B when depth allows.
+    • Demanding visual coding, multi-step visual agents, or coding inseparable from 2-8 tool ERP orchestration → moonshotai/kimi-k2.5.
 
   STEP 2 — TOOL CALLS:
     How many tools will the agent need to call?
@@ -69,7 +79,10 @@ HOW TO REASON (always follow these steps before deciding):
     Escalate only when necessary.
 
     PRODUCT VOCABULARY (do not confuse):
-      - qwen/qwen3.6-plus is NOT a chat-only simple model; treat it as reasoning-tier expertise.
+      - qwen/qwen3-coder-next is the default reasoning-tier coding model (cheapest listed coding pair); qwen/qwen3-coder is the heavier MoE sibling for harder repo work.
+      - Neither Coder model is the default for pure Agiweb CRUD — use qwen/qwen3.5-397b-a17b.
+      - qwen/qwen3.5-35b-a3b is the reasoning-tier native VLM for light image+text; it is NOT a substitute for Kimi on heavy visual-agent or 2-8 tool ERP flows.
+      - qwen/qwen3.6-plus (when listed) is NOT a chat-only simple model; treat it as reasoning-tier expertise.
       - When the user says "reasoning+", "reasoning plus", or the product tier "reasoning+",
         they mean the Kimi K2.5 model (moonshotai/kimi-k2.5) — NOT Claude Sonnet.
       - Claude Sonnet is the FRONTIER tier: reserve it ONLY for extreme long-horizon agentic work,
@@ -94,12 +107,14 @@ LOW_BUDGET_BLOCK = """
 ---
 ORGANIZATION BUDGET MODE (remaining balance at or below threshold — prioritize cost-aware routing):
   Minimize listed token cost while preserving correctness.
-  - Prefer qwen/qwen3.6-plus for low/medium reasoning with tool use under budget.
-  - Escalate to qwen/qwen3.6-plus when reasoning depth, ambiguity, or risk increases.
-  - Use moonshotai/kimi-k2.5 only when Many2one resolution or multi-step synthesis clearly needs reasoning+.
+  - For software/repo coding with 1-5 tools, prefer qwen/qwen3-coder-next; use qwen/qwen3-coder only if Next is clearly insufficient.
+  - For light vision+text with 1-5 tools, prefer qwen/qwen3.5-35b-a3b when it is clearly sufficient (cheaper listed input than 397B).
+  - For Agiweb-first turns without a code-centric ask and without a vision-heavy need, prefer qwen/qwen3.5-397b-a17b.
+  - If qwen/qwen3.6-plus is in the catalog, use it as an alternate reasoning-tier option when it matches the task.
+  - Use moonshotai/kimi-k2.5 only when Many2one resolution, visual coding, or multi-step synthesis clearly needs reasoning+.
   - Do NOT pick openai/gpt-5.4-mini unless incorrect output would cause serious business harm
-    AND Qwen 397B (reasoning) / Kimi are clearly insufficient for the workflow.
-    or "frontier" / maximum capability by name.
+    AND Qwen Coder Next / Coder 480B / 397B / Kimi are clearly insufficient for the workflow,
+    or the user explicitly requests complex / "frontier" / maximum capability by name.
   - Prefer catalog entries with $0 listed cost when they genuinely satisfy the same semantic tier.
 ---
 """

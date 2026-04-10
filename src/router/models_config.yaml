@@ -16,7 +16,7 @@
 #  ────────────┼────────────┼─────────────────────────────────────────┼───────────
 #  simple      │ 0–2        │ (reserved / not yet assigned)           │ —
 #  vl-free     │ 0–4        │ Gemma 4 family (local, $0)              │ $0
-#  reasoning   │ 1–5        │ Qwen3.5 122B-A10B / 397B-A17B / Grok CF│ $1.50–$2.34
+#  reasoning   │ 1–5        │ Coder Next / Coder 480B / 35B VLM / 397B… │ $0.75–$2.34
 #  reasoning+  │ 2–8        │ Kimi K2.5 / Grok 4.1 Fast              │ $0.50–$2.20
 #  complex     │ 5–12       │ GPT-5.4 Mini                            │ $4.50
 #  frontier    │ 10+        │ Claude Sonnet 4.6 (disabled)            │ $15.00
@@ -114,8 +114,8 @@ models:
   #     needs for the same task shape.
 
   # ===========================================================================
-  # TIER: reasoning  │ tool_calls: 1–5  │ Cost: $1.50–$2.34 output/M
-  # Direct Agiweb queries, focused CRUD, linear reasoning, code tasks
+  # TIER: reasoning  │ tool_calls: 1–5  │ Cost: ~$0.75–$2.34 output/M (by model)
+  # Direct Agiweb queries, focused CRUD, linear reasoning, code, light VLM
   # ===========================================================================
 
   # - id: "x-ai/grok-code-fast-1"
@@ -162,6 +162,81 @@ models:
   #     Long-horizon workflows with high ambiguity, deep conditional orchestration,
   #     or broad cross-entity synthesis; escalate to 397B, Kimi, or complex tier as needed.
 
+  - id: "qwen/qwen3-coder-next"
+    tier: "reasoning"
+    task_type: "reasoning"
+    tool_calls: "1-5"
+    context_window: 262144
+    pricing:
+      input_per_1m_tokens:  "$0.12"
+      output_per_1m_tokens: "$0.75"
+    description: >
+      Qwen3-Coder-Next by Qwen. Open-weight causal LM for coding agents and local/dev workflows.
+      Sparse MoE: ~80B total parameters with ~3B activated per token — strong efficiency for
+      cost-sensitive, always-on agent deployment. Trained for agentic use: long-horizon coding, complex
+      tool usage, and recovery from execution failures. Native long context (~256K). Runs in non-thinking
+      mode only (no reasoning hidden blocks), simplifying production agent integration. $0.12/$0.75 per
+      1M tokens; 262K context in this catalog.
+    best_for:
+      - "Default-first for text-only software work in the reasoning tier: implement, refactor, debug, tests, CLI/IDE flows"
+      - "High-volume or budget-sensitive agent coding with 1-5 linear tool calls"
+      - "Long-horizon coding sessions where listed cost should stay low and integration must stay simple"
+    not_for: >
+      Agiweb-first business or ERP turns (prefer qwen/qwen3.5-397b-a17b). Vision in the loop →
+      qwen/qwen3.5-35b-a3b or Kimi. When the task clearly needs the larger Coder 480B MoE headroom for
+      hardest repository reasoning, escalate to qwen/qwen3-coder. Heavy Many2one or 2-8 ERP tools → Kimi.
+      Demanding visual coding → Kimi. Deep conditional orchestration with 5+ tools → complex tier.
+
+  - id: "qwen/qwen3-coder"
+    tier: "reasoning"
+    task_type: "reasoning"
+    tool_calls: "1-5"
+    context_window: 262144
+    pricing:
+      input_per_1m_tokens:  "$0.22"
+      output_per_1m_tokens: "$1"
+    description: >
+      Qwen3-Coder-480B-A35B-Instruct by Qwen. Larger MoE code specialist (~480B total parameters, ~35B active
+      per forward pass; 8 of 160 experts). Use when qwen/qwen3-coder-next is likely insufficient for the
+      hardest repository-scale reasoning in this tier. Same agentic coding focus: tools, long context,
+      repo work. $0.22/$1.00 per 1M tokens; 262K context. On some Alibaba-style endpoints, pricing steps up
+      once input exceeds ~128K tokens — treat very large prompts as potentially higher cost when comparing models.
+    best_for:
+      - "Hardest repo-centric asks in the reasoning tier: deep multi-file reasoning, subtle refactors, heavy codebase navigation"
+      - "When Coder Next is a known weak fit but escalation to reasoning+ is still unnecessary"
+      - "Agentic coding with 1-5 linear tool calls where maximum MoE headroom in this pair is worth the extra listed cost"
+    not_for: >
+      Routine or cost-sensitive coding that Coder Next handles reliably (prefer qwen/qwen3-coder-next).
+      Agiweb-first business queries, CRUD, dashboards, or multi-entity ERP synthesis where code is not
+      the main deliverable (prefer qwen/qwen3.5-397b-a17b). Heavy Many2one or 2-8 tool chains across
+      ERP models (prefer moonshotai/kimi-k2.5). Demanding visual coding or heavy screenshot-driven
+      engineering (prefer Kimi). Simple image+text or light chart Q&A in reasoning tier →
+      qwen/qwen3.5-35b-a3b. Deep conditional orchestration with 5+ tools (complex tier).
+
+  - id: "qwen/qwen3.5-35b-a3b"
+    tier: "reasoning"
+    task_type: "reasoning"
+    tool_calls: "1-5"
+    context_window: 262144
+    pricing:
+      input_per_1m_tokens:  "$0.1625"
+      output_per_1m_tokens: "$1.30"
+    description: >
+      Qwen3.5-35B-A3B by Qwen. Native vision-language model: hybrid linear attention plus sparse
+      mixture-of-experts for efficient inference. Overall capability in line with Qwen3.5-27B-class
+      dense models, with multimodal (image+text) support. Strong mid-tier fit for finance- and
+      programming-adjacent turns when full 397B depth is unnecessary. 262K context. $0.1625/$1.30
+      per 1M tokens.
+    best_for:
+      - "Light multimodal Agiweb turns: describe or interpret an image, chart, screenshot, or PDF snippet with 1-5 tools"
+      - "Budget-conscious reasoning with vision in the loop (lower listed input cost than 397B)"
+      - "Moderate programming with simple visuals when neither Coder Next/Coder nor Kimi-grade visual agents are needed"
+      - "Straightforward finance-style Q&A and numeric reasoning at reasoning-tier depth"
+    not_for: >
+      Primary deliverable is large-repo software engineering (prefer qwen/qwen3-coder-next, then qwen/qwen3-coder). Maximum
+      reliability for complex ERP, deep ambiguity, or business synthesis (prefer qwen/qwen3.5-397b-a17b).
+      Heavy Many2one, 2-8 tool chains, or autonomous visual coding pipelines (prefer Kimi).
+
   - id: "qwen/qwen3.5-397b-a17b"
     tier: "reasoning"
     task_type: "reasoning"
@@ -180,8 +255,10 @@ models:
       - "Single Agiweb model CRUD with known fields: 'update phone for contact', 'mark task as done'"
       - "State queries: 'what is the balance', 'how many orders', 'list clients of X'"
       - "Questions about the current Agiweb page or conversation context"
-      - "Follow-ups needing maximum reliability vs. the 122B fallback"
+      - "General reasoning and reliability when the task is ERP/business-first, not repo-centric coding"
     not_for: >
+      The user’s goal is primarily software engineering over a codebase (prefer qwen/qwen3-coder-next; escalate to qwen/qwen3-coder if depth demands).
+      Light vision+text or simple charts with 1-5 tools where the smaller VLM suffices (prefer qwen/qwen3.5-35b-a3b).
       Queries requiring comparison across multiple periods/entities,
       conditional workflows, deep Many2one resolution,
       or aggregation across 3+ different Agiweb models.
@@ -231,9 +308,13 @@ models:
       - "Ambiguity resolution: 'assign to the BOLTHERM account manager' (needs ID lookup)"
       - "Financial analysis: 'average margin per product in Q1', 'overdue receivables over 30 days'"
       - "Questions mentioning images, charts, or visual Agiweb data"
+      - "Visual coding or coding tightly coupled to screenshots, charts, or UI mockups"
+      - "Code changes that require reasoning+ depth: 2-8 tools, Many2one, or multi-entity context"
       - "Light conditional reasoning: 'if X then Y, else Z' with 1-2 conditional levels"
     not_for: >
-      Workflows with 8+ tool calls and complex conditional logic,
+      Straightforward text-only repo work with 1-5 tools and no ERP/visual complexity — prefer
+      qwen/qwen3-coder-next (or qwen/qwen3-coder if extra headroom is clearly needed). Lightweight image/chart understanding with 1-5 tools and
+      no reasoning+ orchestration — prefer qwen/qwen3.5-35b-a3b. Workflows with 8+ tool calls and complex conditional logic,
       iterative self-correction, multi-agent orchestration,
       or re-planning mid-execution.
 
@@ -309,7 +390,7 @@ models:
 # FALLBACK MODEL
 # Used when the classifier cannot determine the tier with confidence.
 # =============================================================================
-default_model: "qwen/qwen3.5-397b-a17b"
+default_model: "qwen/qwen3-coder-next"
 
 
 # =============================================================================
@@ -323,6 +404,9 @@ default_model: "qwen/qwen3.5-397b-a17b"
 #  vl-free     │ ollama/gemma4:26b               │ 256K    │ $0        │ $0
 #  vl-free     │ ollama/gemma4:31b               │ 256K    │ $0        │ $0
 #  reasoning+  │ x-ai/grok-4.1-fast              │ 2M      │ $0.20     │ $0.50
+#  reasoning   │ qwen/qwen3-coder-next           │ 262K    │ $0.12     │ $0.75
+#  reasoning   │ qwen/qwen3-coder                │ 262K    │ $0.22     │ $1.00
+#  reasoning   │ qwen/qwen3.5-35b-a3b            │ 262K    │ $0.1625   │ $1.30
 #  reasoning   │ x-ai/grok-code-fast-1           │ 256K    │ $0.20     │ $1.50
 #  reasoning   │ qwen/qwen3.6-plus               │ 1M      │ $0.325    │ $1.95
 #  reasoning+  │ moonshotai/kimi-k2.5            │ 262K    │ $0.45     │ $2.20
