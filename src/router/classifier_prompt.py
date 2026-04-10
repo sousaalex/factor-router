@@ -39,15 +39,18 @@ HOW TO REASON (always follow these steps before deciding):
     Is the answer direct or does it require chaining logic?
     → Trivial / chat / no real ERP work = avoid spending expertise models; pick the cheapest model that still follows policy
     → 1 logical hop with real Agiweb or 1-5 linear tool calls = reasoning tier:
-          escalate to qwen/qwen3-coder only when the hardest repository reasoning in this tier is clearly required
-        • Light vision+language (image/chart/screenshot Q&A) with 1-5 tools, not heavy visual-agent work → qwen/qwen3.5-35b-a3b
+        • Primary deliverable is software/repo coding (text, tests, refactor, debug) → qwen/qwen3.5-plus-02-15 for long context; otherwise prefer qwen/qwen3.5-35b-a3b or escalate to Kimi for reasoning+ depth
+        • Estimated prompt+history or attachments clearly need >262K tokens, or long academic / long multimodal documents → qwen/qwen3.5-plus-02-15
+        • Light vision+language (image/chart/screenshot Q&A) with 1-5 tools, not heavy visual-agent work, within 262K → qwen/qwen3.5-35b-a3b
         • ERP/business-first Agiweb work or general reasoning without a code-centric ask → qwen/qwen3.5-397b-a17b
         • If qwen/qwen3.6-plus is in the catalog, it is also reasoning-tier general/coding breadth (when enabled)
     → 2-3 hops or mild multi-step = reasoning+ tier → moonshotai/kimi-k2.5 (NOT Claude)
     → 4+ hops with conditionals = complex (GPT-5.4 Mini) or true frontier (Claude only if justified)
 
   CODING VS VISION VS KIMI:
-    • Simple multimodal (read a chart/screenshot, describe UI) with 1-5 tools → prefer qwen/qwen3.5-35b-a3b over 397B when depth allows.
+    • Text-only repository / engineering with 1-5 tools → prefer qwen/qwen3.5-35b-a3b for simple cases; use Plus when context exceeds ~262K; escalate to Kimi for reasoning+ depth.
+    • Simple multimodal within ~262K (chart/screenshot, describe UI) with 1-5 tools → prefer qwen/qwen3.5-35b-a3b over 397B when depth allows.
+    • Very long context or very long multimodal inputs in the reasoning tier → qwen/qwen3.5-plus-02-15.
     • Demanding visual coding, multi-step visual agents, or coding inseparable from 2-8 tool ERP orchestration → moonshotai/kimi-k2.5.
 
   STEP 2 — TOOL CALLS:
@@ -77,8 +80,9 @@ HOW TO REASON (always follow these steps before deciding):
     Escalate only when necessary.
 
     PRODUCT VOCABULARY (do not confuse):
-      - Neither Coder model is the default for pure Agiweb CRUD — use qwen/qwen3.5-397b-a17b.
-      - qwen/qwen3.5-35b-a3b is the reasoning-tier native VLM for light image+text; it is NOT a substitute for Kimi on heavy visual-agent or 2-8 tool ERP flows.
+      - qwen/qwen3.5-35b-a3b is the default for light multimodal and general reasoning within 262K; not for pure Agiweb CRUD (use qwen/qwen3.5-397b-a17b).
+      - qwen/qwen3.5-plus-02-15 is the 1M-context Qwen3.5 Plus VLM; pick it when long context or long multimodal inputs are required, not for routine short turns.
+      - qwen/qwen3.5-35b-a3b is the reasoning-tier native VLM for light image+text within ~262K; it is NOT a substitute for Kimi on heavy visual-agent or 2-8 tool ERP flows.
       - qwen/qwen3.6-plus (when listed) is NOT a chat-only simple model; treat it as reasoning-tier expertise.
       - When the user says "reasoning+", "reasoning plus", or the product tier "reasoning+",
         they mean the Kimi K2.5 model (moonshotai/kimi-k2.5) — NOT Claude Sonnet.
@@ -104,12 +108,14 @@ LOW_BUDGET_BLOCK = """
 ---
 ORGANIZATION BUDGET MODE (remaining balance at or below threshold — prioritize cost-aware routing):
   Minimize listed token cost while preserving correctness.
-  - For light vision+text with 1-5 tools, prefer qwen/qwen3.5-35b-a3b when it is clearly sufficient (cheaper listed input than 397B).
+  - For light vision+text with 1-5 tools within ~262K, prefer qwen/qwen3.5-35b-a3b when it is clearly sufficient (cheaper listed input than 397B).
+  - Use qwen/qwen3.5-plus-02-15 only when >262K context or equivalent long multimodal need is clear; otherwise prefer smaller-window models.
   - For Agiweb-first turns without a code-centric ask and without a vision-heavy need, prefer qwen/qwen3.5-397b-a17b.
+  - For software/repo coding with 1-5 tools, prefer qwen/qwen3.5-35b-a3b for simple cases; use Plus when context exceeds ~262K; escalate to Kimi for reasoning+ depth.
   - If qwen/qwen3.6-plus is in the catalog, use it as an alternate reasoning-tier option when it matches the task.
   - Use moonshotai/kimi-k2.5 only when Many2one resolution, visual coding, or multi-step synthesis clearly needs reasoning+.
   - Do NOT pick openai/gpt-5.4-mini unless incorrect output would cause serious business harm
-    AND Qwen Coder Next / Coder 480B / 397B / Kimi are clearly insufficient for the workflow,
+    AND Qwen Plus / 35B VLM / 397B / Kimi are clearly insufficient for the workflow,
     or the user explicitly requests complex / "frontier" / maximum capability by name.
   - Prefer catalog entries with $0 listed cost when they genuinely satisfy the same semantic tier.
 ---
