@@ -222,15 +222,15 @@ def _heuristic_route_model(
         return "moonshotai/kimi-k2.5"
 
     if any(term in text for term in ("create", "update", "delete", "approve", "assign", "sync", "orchestrate")) and _looks_like_business_work(text):
-        return "x-ai/grok-code-fast-1" if openrouter_balance_low else "qwen/qwen3.5-397b-a17b"
+        return "qwen/qwen3.5-397b-a17b"
 
     if any(term in text for term in ("code", "bug", "fix", "refactor", "implement", "test", "repo", "pull request", "python", "typescript", "javascript", "react", "api", "endpoint", "class", "function")):
-        return "x-ai/grok-code-fast-1"
+        return "qwen/qwen3.5-397b-a17b"
 
     if _looks_like_business_work(text):
-        return "x-ai/grok-code-fast-1" if openrouter_balance_low else "qwen/qwen3.5-397b-a17b"
+        return "qwen/qwen3.5-397b-a17b"
 
-    return "x-ai/grok-code-fast-1"
+    return "qwen/qwen3.5-397b-a17b"
 
 
 async def _call_classifier(
