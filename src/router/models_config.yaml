@@ -118,46 +118,6 @@ models:
   # Direct Agiweb queries, focused CRUD, linear reasoning, code, light VLM
   # ===========================================================================
 
-  # - id: "x-ai/grok-code-fast-1"
-  #   tier: "reasoning"
-  #   task_type: "reasoning"
-  #   tool_calls: "1-5"
-  #   context_window: 256000
-  #   pricing:
-  #     input_per_1m_tokens:  "$0.20"
-  #     output_per_1m_tokens: "$1.50"
-  #   description: >
-  #     Grok Code Fast 1 by xAI. Cheapest reasoning-tier model; specialized in
-  #     agentic coding workflows. Best fit for code generation, editing, debugging,
-  #     and structured technical reasoning with moderate tool depth.
-  #     256K context. $0.20/$1.50 per 1M tokens.
-  #   best_for:
-  #     - "Agentic coding tasks under budget: implement, refactor, fix, explain code paths"
-  #     - "Technical workflows where 397B-level breadth is unnecessary"
-  #     - "Fast iteration loops in engineering support contexts"
-  #   not_for: >
-  #     Broad business synthesis across multiple ERP domains, heavy multi-entity
-  #     ambiguity, or deep conditional orchestration; escalate to reasoning+ or complex.
-
-  - id: "x-ai/grok-code-fast-1"
-    tier: "reasoning"
-    task_type: "reasoning"
-    tool_calls: "1-5"
-    context_window: 256000
-    pricing:
-      input_per_1m_tokens:  "$0.20"
-      output_per_1m_tokens: "$1.50"
-    description: >
-      Grok Code Fast 1 by xAI. Cheap reasoning-tier model for rapid coding and
-      general technical turns. Good default when the request is clearly simple
-      and does not need 1M context or heavy ERP synthesis.
-    best_for:
-      - "Fast code fixes, refactors, and debugging"
-      - "Simple technical questions and short repo work"
-      - "Low-latency routing when the task is obviously not frontier-grade"
-    not_for: >
-      Long-context work, heavy multimodal inputs, complex ERP synthesis, or
-      multi-step conditional orchestration.
 
   # - id: "qwen/qwen3.6-plus"
   #   tier: "reasoning"
