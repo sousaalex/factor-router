@@ -177,20 +177,15 @@ models:
       input_per_1m_tokens:  "$0.26"
       output_per_1m_tokens: "$1.56"
     description: >
-      Qwen3.5 Plus (release snapshot 2026-02-15). Native vision-language model in the Qwen3.5 Plus line, built on a hybrid
-      architecture that combines linear attention with sparse mixture-of-experts for higher inference efficiency. The 3.5 series
-      tracks near state-of-the-art on many evaluations, with a clear step up from Qwen3 in both pure-text and multimodal
-      quality. 1,000,000 token context. $0.26/$1.56 per 1M tokens.
+      Qwen3.5 Plus with 1M token context. Hybrid architecture for efficient inference.
+      Strong on coding, long documents, and multimodal tasks within 1-5 tool calls.
     best_for:
-      - "Reasoning-tier turns that need a 1M window: very long transcripts, specs, logs, or pasted corpora with 1-5 tools"
-      - "Academic or research-style questions over long sources plus optional figures, charts, or screenshots"
-      - "Programming assistance over very long code or traces when complexity stays in the reasoning tier (not reasoning+)"
-      - "Multimodal reasoning where 262K is too tight but Many2one depth still fits 1-5 tools (not Kimi-grade orchestration)"
+      - "Coding tasks: refactor, debug, implement, tests"
+      - "Long context: >262K tokens, large documents, transcripts"
+      - "Vision + text: image/chart analysis within 1M context"
+      - "Multi-step linear ERP operations"
     not_for: >
-      Specialist repo coding without a real 1M or long-document need (prefer qwen/qwen3.5-35b-a3b for simple cases, or escalate to Kimi for reasoning+ depth). Light image or chart Q&A
-      that fits in 262K (prefer qwen/qwen3.5-35b-a3b). Routine Agiweb CRUD and business queries without long-context pressure
-      (prefer qwen/qwen3.5-397b-a17b). Heavy Many2one, 2-8 tool ERP chains, or demanding visual-agent coding (prefer Kimi).
-      Deep conditional workflows with 5+ tools (complex tier).
+      Simple greetings or single-entity lookups. Heavy multi-entity orchestration with 2-8 tools. Deep conditional workflows with 5+ tools.
 
   - id: "qwen/qwen3.5-397b-a17b"
     tier: "reasoning"
@@ -201,23 +196,16 @@ models:
       input_per_1m_tokens:  "$0.39"
       output_per_1m_tokens: "$2.34"
     description: >
-      Qwen3.5 397B-A17B by Qwen. State-of-the-art across language understanding,
-      logical reasoning, code generation, agent tasks, and GUI interactions.
-      Default fallback model — reliable reasoning with strong tool robustness.
-      262K context. $0.39/$2.34 per 1M tokens.
+      Qwen3.5 397B-A17B. Reliable reasoning with strong tool robustness.
+      Best for routine ERP queries and business operations. 262K context.
     best_for:
-      - "Direct Agiweb queries with 1-5 linear tool calls: 'total sales this week', 'list overdue invoices'"
-      - "Single Agiweb model CRUD with known fields: 'update phone for contact', 'mark task as done'"
-      - "State queries: 'what is the balance', 'how many orders', 'list clients of X'"
-      - "Questions about the current Agiweb page or conversation context"
-      - "General reasoning and reliability when the task is ERP/business-first, not repo-centric coding"
+      - "Simple ERP queries: totals, lists, state queries"
+      - "Single-entity CRUD operations"
+      - "Greetings and conversational turns"
+      - "Direct Agiweb queries with 1-5 linear tool calls"
     not_for: >
-      Primary goal is software engineering over a codebase (use qwen/qwen3.5-plus-02-15 for long context, or escalate to Kimi for reasoning+ depth).
-      Light vision+text or simple charts with 1-5 tools where the smaller VLM suffices (prefer qwen/qwen3.5-35b-a3b).
-      Very long single-window context (>262K) or long multimodal bundles at reasoning tier (prefer qwen/qwen3.5-plus-02-15).
-      Queries requiring comparison across multiple periods/entities,
-      conditional workflows, deep Many2one resolution,
-      or aggregation across 3+ different Agiweb models.
+      Long context needs >262K. Multi-entity orchestration requiring 2-8 tools.
+      Deep conditional workflows with 5+ tools.
 
   # ===========================================================================
   # TIER: reasoning+  │ tool_calls: 2–8  │ Cost: $0.50–$2.20 output/M
@@ -254,25 +242,16 @@ models:
       input_per_1m_tokens:  "$0.45"
       output_per_1m_tokens: "$2.20"
     description: >
-      Kimi K2.5 by MoonshotAI. State-of-the-art in visual coding and autonomous
-      agent paradigm. Built on Kimi K2 with ~15T mixed visual and text tokens.
-      Strong in general reasoning, visual coding, and multi-step agentic tool-calling.
-      262K context. $0.45/$2.20 per 1M tokens.
+      Kimi K2.5. Multi-step agentic tool-calling with Many2one resolution and
+      cross-entity synthesis. 262K context.
     best_for:
-      - "Multi-step 2-8 tools with Many2one: 'create a sale for BOLTHERM with products from last quote'"
-      - "Cross-model aggregation: 'total invoiced this month by client and product'"
-      - "Ambiguity resolution: 'assign to the BOLTHERM account manager' (needs ID lookup)"
-      - "Financial analysis: 'average margin per product in Q1', 'overdue receivables over 30 days'"
-      - "Questions mentioning images, charts, or visual Agiweb data"
-      - "Visual coding or coding tightly coupled to screenshots, charts, or UI mockups"
-      - "Code changes that require reasoning+ depth: 2-8 tools, Many2one, or multi-entity context"
-      - "Light conditional reasoning: 'if X then Y, else Z' with 1-2 conditional levels"
+      - "Many2one resolution with multi-step orchestration"
+      - "Cross-entity aggregation: totals by client AND product"
+      - "2-8 tool calls requiring multi-model synthesis"
+      - "Visual coding coupled to screenshots/charts"
     not_for: >
-      Straightforward text-only repo work with 1-5 tools and no ERP/visual complexity — prefer qwen/qwen3.5-35b-a3b or qwen/qwen3.5-plus-02-15 depending on context length.
-      Long-context or heavy long multimodal in reasoning tier without 2-8 ERP orchestration — prefer qwen/qwen3.5-plus-02-15.
-      Lightweight image/chart understanding within 262K with 1-5 tools — prefer qwen/qwen3.5-35b-a3b. Workflows with 8+ tool calls and complex conditional logic,
-      iterative self-correction, multi-agent orchestration,
-      or re-planning mid-execution.
+      Simple queries or single-entity operations. Greetings and chat.
+      Tasks with 1-5 linear tool calls.
 
   # ===========================================================================
   # TIER: complex  │ tool_calls: 5–12  │ Cost: $4.50 output/M
@@ -304,24 +283,24 @@ models:
   #     Tasks that Qwen 397B (reasoning) or Kimi (reasoning+) can handle correctly.
   #     Do not use as default — escalate only when complexity genuinely demands it.
 
-  - id: "openai/gpt-5.4-mini"
-    tier: "complex"
-    task_type: "complex"
-    tool_calls: "5-12"
-    context_window: 400000
-    pricing:
-      input_per_1m_tokens:  "$0.75"
-      output_per_1m_tokens: "$4.50"
-    description: >
-      GPT-5.4 Mini by OpenAI. Strong complex-tier model for deeper tool chains,
-      multi-step conditionals, and high-stakes workflows when Kimi or 397B is not
-      enough.
-    best_for:
-      - "5-12 tool calls with branching logic"
-      - "Cascading creation and multi-module reports"
-      - "High-stakes tasks where a stronger complex-tier model is justified"
-    not_for: >
-      Routine requests that can be handled by reasoning-tier or reasoning+ models.
+  # - id: "openai/gpt-5.4-mini"
+  #   tier: "complex"
+  #   task_type: "complex"
+  #   tool_calls: "5-12"
+  #   context_window: 400000
+  #   pricing:
+  #     input_per_1m_tokens:  "$0.75"
+  #     output_per_1m_tokens: "$4.50"
+  #   description: >
+  #     GPT-5.4 Mini by OpenAI. Strong complex-tier model for deeper tool chains,
+  #     multi-step conditionals, and high-stakes workflows when Kimi or 397B is not
+  #     enough.
+  #   best_for:
+  #     - "5-12 tool calls with branching logic"
+  #     - "Cascading creation and multi-module reports"
+  #     - "High-stakes tasks where a stronger complex-tier model is justified"
+  #   not_for: >
+  #     Routine requests that can be handled by reasoning-tier or reasoning+ models.
 
 # =============================================================================
 # FALLBACK MODEL

@@ -163,11 +163,11 @@ Um único `.env` para o gateway e para o Postgres.
 | `AUTH0_ISSUER` | — | Opcional; default `https://<AUTH0_DOMAIN>/` |
 | `AUTH0_JWT_LEEWAY_SECONDS` | — | Default `0` |
 | `OLLAMA_BASE_URL` | ✓ | `http://host.docker.internal:11434` |
-| `ROUTER_DECISION_MODE` | — | `heuristic` por defeito; `llm` ativa o classificador Ollama antigo |
-| `CLASSIFIER_MODEL` | — | Modelo Ollama usado só em `ROUTER_DECISION_MODE=llm` (default: `qwen2.5:0.5b`) |
+| `ROUTER_DECISION_MODE` | — | `hybrid` por defeito; `heuristic` força regras locais; `llm` ativa o classificador Ollama |
+| `CLASSIFIER_MODEL` | — | Modelo Ollama usado no classificador (default: `qwen2.5:0.5b`) |
 | `UPSTREAM_URL` | — | Default: `https://openrouter.ai/api/v1` |
 | `UPSTREAM_TIMEOUT` | — | Default: `120` segundos |
-| `CLASSIFIER_TIMEOUT_SECONDS` | — | Default: `2.5` segundos no modo `llm` |
+| `CLASSIFIER_TIMEOUT_SECONDS` | — | Default: `2.0` segundos |
 | `HOST` | — | Default: `0.0.0.0` |
 | `PORT` | — | Default: `8003` |
 | `LOG_LEVEL` | — | Default: `info` |
@@ -508,13 +508,13 @@ X-Turn-Id guardado com model_id → próximos calls do mesmo turno usam mesmo mo
 ### Configuração
 
 ```yaml
-ROUTER_DECISION_MODE=heuristic
-CLASSIFIER_MODEL=qwen2.5:0.5b   # usado só se ROUTER_DECISION_MODE=llm
+ROUTER_DECISION_MODE=hybrid
+CLASSIFIER_MODEL=qwen2.5:0.5b   # usado quando o híbrido cair para LLM ou em ROUTER_DECISION_MODE=llm
 ```
 
 ### Fallback
 
-Se activares `ROUTER_DECISION_MODE=llm`, o gateway volta ao classificador Ollama e, se houver falha, usa o `default_model` automaticamente. No modo por defeito, a decisão é local e não há chamada externa.
+Se activares `ROUTER_DECISION_MODE=llm`, o gateway usa sempre o classificador Ollama. No modo `hybrid`, a heurística resolve os casos claros e o classificador só entra quando há ambiguidade; se falhar, usa o fallback local. Em `heuristic`, tudo fica local.
 
 ---
 

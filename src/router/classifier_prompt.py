@@ -4,16 +4,6 @@ Factor AI — Classifier Prompt
 Builds system and user prompts for the routing classifier.
 """
 
-# Expected tool-call bands per tier (prompt hint)
-TIER_TOOL_CALLS = {
-    "simple":     "0-2",
-    "vl-free":    "0-4",
-    "reasoning":  "1-5",
-    "reasoning+": "2-8",
-    "complex":    "5-12",
-    "frontier":   "10+",
-}
-
 # Agent context (English) — injected into the classifier prompt
 AGENT_CONTEXT = """
 AGENT CONTEXT:
@@ -24,164 +14,42 @@ AGENT CONTEXT:
   The agent can execute up to 15 chained tool calls per request.
 """
 
-# Classifier system prompt — English, five-step reasoning scaffold
+# Classifier system prompt — simplified to return tier only
 CLASSIFIER_SYSTEM_PROMPT = """You are a model routing classifier for the Severino Agent.
 
-Your ONLY job is to read the user message and decide which LLM model is best suited,
-based on SEMANTIC PATTERNS in the message — not on keywords.
+Classify each request into ONE of these 4 tiers:
 
-{agent_context}
+TIER 1 (simple): Greetings, thanks, simple ERP queries, single-entity lookups
+  Examples: "olá", "bom dia", "total de vendas", "listar faturas", "telefone do cliente"
 
-HOW TO REASON (always follow these steps before deciding):
+TIER 2 (reasoning): Coding tasks, long context >262K, vision+text analysis, multi-step linear operations
+  Examples: "refactor código Python", "analisar documento grande", "imagem de gráfico"
 
-  STEP 1 — REASONING DEPTH:
-    How many logical steps are needed to answer?
-    Is the answer direct or does it require chaining logic?
-    → Trivial / chat / no real ERP work = avoid spending expertise models; pick the cheapest model that still follows policy
-    → 1 logical hop with real Agiweb or 1-5 linear tool calls = reasoning tier:
-        • Primary deliverable is software/repo coding (text, tests, refactor, debug) → qwen/qwen3.5-plus-02-15 for long context; otherwise prefer qwen/qwen3.5-35b-a3b or escalate to Kimi for reasoning+ depth
-        • Estimated prompt+history or attachments clearly need >262K tokens, or long academic / long multimodal documents → qwen/qwen3.5-plus-02-15
-        • Light vision+language (image/chart/screenshot Q&A) with 1-5 tools, not heavy visual-agent work, within 262K → qwen/qwen3.5-35b-a3b
-        • ERP/business-first Agiweb work or general reasoning without a code-centric ask → qwen/qwen3.5-397b-a17b
-        • If qwen/qwen3.6-plus is in the catalog, it is also reasoning-tier general/coding breadth (when enabled)
-    → 2-3 hops or mild multi-step = reasoning+ tier → moonshotai/kimi-k2.5
-    → 4+ hops with conditionals = complex (GPT-5.4 Mini) or frontier (GPT-5.4 Mini only if justified)
+TIER 3 (reasoning+): Many2one resolution WITH cross-entity synthesis, 2-8 tool calls
+  Examples: "criar fatura para cliente X com produtos do orçamento Y"
 
-  CODING VS VISION VS KIMI:
-    • Text-only repository / engineering with 1-5 tools → prefer qwen/qwen3.5-35b-a3b for simple cases; use Plus when context exceeds ~262K; escalate to Kimi for reasoning+ depth.
-    • Simple multimodal within ~262K (chart/screenshot, describe UI) with 1-5 tools → prefer qwen/qwen3.5-35b-a3b over 397B when depth allows.
-    • Very long context or very long multimodal inputs in the reasoning tier → qwen/qwen3.5-plus-02-15.
-    • Demanding visual coding, multi-step visual agents, or coding inseparable from 2-8 tool ERP orchestration → moonshotai/kimi-k2.5.
-
-  STEP 2 — TOOL CALLS:
-    How many tools will the agent need to call?
-    Is there a Many2one to resolve? (e.g. "for client BOLTHERM" requires an ID lookup)
-    → 0-2 trivial calls or none = keep cost low; real ERP lookups → reasoning or higher
-    → 1-5 linear calls = reasoning
-    → 2-8 calls with some Many2one = reasoning+
-    → 5-12 calls with conditional logic = complex
-    → 10+ calls with expected self-correction = frontier
-
-  STEP 3 — SYNTHESIS:
-    Does the answer require combining data from multiple Agiweb models?
-    Is there comparison across time periods, entities, or categories?
-    → No Agiweb / pure language = keep in lower-cost models when possible
-    → 1 Agiweb model = reasoning
-    → 2-3 models with known relationships = reasoning+
-    → 4+ models or unknown relationships = complex
-
-  STEP 4 — ERROR COST:
-    What is the impact if the agent makes a mistake?
-    → Read/query operations = low risk → use cheaper model
-    → Create/update critical records (orders, invoices, approvals, etc.) = high risk → use more capable model
-
-  STEP 5 — DECISION:
-    Pick the CHEAPEST model that can do the job CORRECTLY.
-    Escalate only when necessary.
-
-    PRODUCT VOCABULARY (do not confuse):
-      - qwen/qwen3.5-35b-a3b is the default for light multimodal and general reasoning within 262K; not for pure Agiweb CRUD (use qwen/qwen3.5-397b-a17b).
-      - qwen/qwen3.5-plus-02-15 is the 1M-context Qwen3.5 Plus VLM; pick it when long context or long multimodal inputs are required, not for routine short turns.
-      - qwen/qwen3.5-35b-a3b is the reasoning-tier native VLM for light image+text within ~262K; it is NOT a substitute for Kimi on heavy visual-agent or 2-8 tool ERP flows.
-      - qwen/qwen3.6-plus (when listed) is NOT a chat-only simple model; treat it as reasoning-tier expertise.
-      - When the user says "reasoning+", "reasoning plus", or the product tier "reasoning+",
-        they mean the Kimi K2.5 model (moonshotai/kimi-k2.5).
-      - GPT-5.4 Mini is the FRONTIER/complex ceiling in this configuration: reserve it ONLY for
-        extreme long-horizon agentic work, explicit requests for frontier capability, or complexity
-        that clearly exceeds Kimi. It is a last resort.
-
-PRINCIPLE: Good, Clean, and Cheap.
-  Underestimating complexity = agent fails, user loses trust.
-  Overestimating complexity = unnecessary cost to the company.
+TIER 4 (complex): 5-12 tool calls with branching logic, cascading creation
+  Examples: "criar cliente, contacto, projeto e tarefa com condicionais complexas"
 
 RULES:
-  - Reply with ONLY a valid JSON object. No explanation. No markdown. No extra text.
-  - Format: {{"model": "<exact_model_id>"}}
-  - Valid model IDs (copy one exactly from this list): {valid_model_ids}
-  - When in doubt, use the default: {default_model}
-
-AVAILABLE MODELS:
-{models_description}
+- Default to the LOWEST tier that can handle the task
+- Only escalate when multi-entity orchestration is clearly required
+- Reply with ONLY: {{"tier": 1}} or {{"tier": 2}} or {{"tier": 3}} or {{"tier": 4}}
+- NO explanation, NO markdown, ONLY the JSON
 """
 
 LOW_BUDGET_BLOCK = """
 ---
-ORGANIZATION BUDGET MODE (remaining balance at or below threshold — prioritize cost-aware routing):
-  Minimize listed token cost while preserving correctness.
-  - For light vision+text with 1-5 tools within ~262K, prefer qwen/qwen3.5-35b-a3b when it is clearly sufficient (cheaper listed input than 397B).
-  - Use qwen/qwen3.5-plus-02-15 only when >262K context or equivalent long multimodal need is clear; otherwise prefer smaller-window models.
-  - For Agiweb-first turns without a code-centric ask and without a vision-heavy need, prefer qwen/qwen3.5-397b-a17b.
-  - For software/repo coding with 1-5 tools, prefer qwen/qwen3.5-35b-a3b for simple cases; use Plus when context exceeds ~262K; escalate to Kimi for reasoning+ depth.
-  - If qwen/qwen3.6-plus is in the catalog, use it as an alternate reasoning-tier option when it matches the task.
-  - Use moonshotai/kimi-k2.5 only when Many2one resolution, visual coding, or multi-step synthesis clearly needs reasoning+.
-  - Do NOT pick openai/gpt-5.4-mini unless incorrect output would cause serious business harm
-    AND Qwen Plus / 35B VLM / 397B / Kimi are clearly insufficient for the workflow,
-    or the user explicitly requests complex / "frontier" / maximum capability by name.
-  - Prefer catalog entries with $0 listed cost when they genuinely satisfy the same semantic tier.
+BUDGET MODE: Prefer tier 1 and 2. Only use tier 3 when cross-entity synthesis is clearly required.
 ---
 """
 
 # User prompt — English, includes token estimates
 CLASSIFIER_USER_PROMPT = """User message: "{user_message}"
 
-Estimated tokens: input ~{est_input}, output ~{est_output}, total ~{est_total}.
-Consider each model's context window and cost when deciding.
+Estimated tokens: input ~{est_input}, output ~{est_output}.
 
-Reply with ONLY valid JSON: {{"model": "<exact_model_id>"}}"""
-
-
-def _format_context_window(n) -> str:
-    """Format context window size for display in the prompt."""
-    if n is None:
-        return "?"
-    if isinstance(n, int):
-        if n >= 1_000_000:
-            return f"{n // 1_000_000}M tokens"
-        if n >= 1_000:
-            return f"{n // 1_000}K tokens"
-        return str(n)
-    return str(n)
-
-
-def build_models_description(models: list[dict]) -> str:
-    """Build per-model text blocks for the classifier (English content from YAML)."""
-    lines = []
-    for m in models:
-        tier        = m.get("tier", "?")
-        pricing     = m.get("pricing") or {}
-        input_cost  = pricing.get("input_per_1m_tokens",  "?")
-        output_cost = pricing.get("output_per_1m_tokens", "?")
-        ctx_str     = _format_context_window(m.get("context_window"))
-        tool_calls  = TIER_TOOL_CALLS.get(tier, "?")
-
-        lines.append("---")
-        lines.append(f"MODEL: {m['id']}")
-        lines.append(
-            f"TIER: {tier} | EXPECTED TOOL CALLS: {tool_calls} | "
-            f"CONTEXT: {ctx_str} | COST: {input_cost} input / {output_cost} output per 1M tokens"
-        )
-        lines.append("")
-        lines.append(m.get("description", "").strip())
-        lines.append("")
-
-        best_for = m.get("best_for") or []
-        if best_for:
-            lines.append("BEST FOR:")
-            for use_case in best_for:
-                lines.append(f"  - {use_case.strip()}")
-
-        not_for = (m.get("not_for") or "").strip()
-        if not_for:
-            lines.append(f"DO NOT USE WHEN: {not_for}")
-
-        lines.append("")
-
-    return "\n".join(lines)
-
-
-def _valid_model_ids(models: list[dict]) -> str:
-    """Format valid model IDs for the prompt."""
-    return ", ".join(f'"{m["id"]}"' for m in models)
+Reply with ONLY: {{"tier": N}} where N is 1, 2, 3, or 4."""
 
 
 def build_classifier_prompt(
@@ -198,16 +66,9 @@ def build_classifier_prompt(
 
     All neural-facing text is English.
     """
-    models_desc = build_models_description(models)
-    valid_ids   = _valid_model_ids(models)
-    est_total   = estimated_input_tokens + estimated_output_tokens
+    est_total = estimated_input_tokens + estimated_output_tokens
 
-    system = CLASSIFIER_SYSTEM_PROMPT.format(
-        agent_context=AGENT_CONTEXT.strip(),
-        valid_model_ids=valid_ids,
-        default_model=default_model,
-        models_description=models_desc,
-    )
+    system = CLASSIFIER_SYSTEM_PROMPT
     if openrouter_balance_low:
         system = system + "\n" + LOW_BUDGET_BLOCK.strip() + "\n"
 
@@ -215,7 +76,6 @@ def build_classifier_prompt(
         user_message=user_message,
         est_input=estimated_input_tokens,
         est_output=estimated_output_tokens,
-        est_total=est_total,
     )
 
     return system, user

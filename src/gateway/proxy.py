@@ -623,21 +623,34 @@ async def handle_chat_completions(
         "stream_options": {"include_usage": True},   # tokens reais no chunk final (OpenRouter)
         "messages": messages,                        # passa as mensagens corrigidas
     }
-    # FIX: Alibaba/Qwen em "thinking mode" rejeita tool_choice=required ou object.
-    # Não podemos degradar para "auto" porque alguns agentes exigem tool-call obrigatório.
-    # Nesses casos, reencaminhamos para um modelo compatível com tool_choice required.
+    # FIX: Alguns modelos do catálogo rejeitam tool_choice=required ou tool_choice como object.
+    # Se isso acontecer, preferimos um fallback compatível do próprio catálogo.
     tool_choice = upstream_body.get("tool_choice")
     model_l = str(model_id).lower()
+    has_image_input = any(
+        isinstance(part, dict) and (
+            str(part.get("type") or "").lower() in {"image", "image_url", "input_image"}
+            or (
+                isinstance(part.get("image_url"), dict)
+                and part.get("image_url", {}).get("url")
+            )
+        )
+        for msg in messages
+        if isinstance(msg, dict) and msg.get("role") == "user"
+        for part in (msg.get("content") if isinstance(msg.get("content"), list) else [])
+    )
     if ("alibaba" in model_l or "qwen" in model_l) and (
         tool_choice == "required" or isinstance(tool_choice, dict)
     ):
+        fallback_model = "moonshotai/kimi-k2.5" if has_image_input else "qwen/qwen3.5-397b-a17b"
         logger.warning(
-            "[Proxy] tool_choice=%r incompatível com thinking mode no model=%s; "
-            "a usar fallback compatível moonshotai/kimi-k2.5.",
+            "[Proxy] tool_choice=%r incompatível com model=%s; "
+            "a usar fallback compatível %s.",
             tool_choice,
             model_id,
+            fallback_model,
         )
-        model_id = "moonshotai/kimi-k2.5"
+        model_id = fallback_model
         upstream_body["model"] = model_id
         await accumulator.set_bucket_model_id(bid, model_id)
 
