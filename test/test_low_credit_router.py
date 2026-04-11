@@ -23,7 +23,7 @@ class TestCapLowCredit(unittest.TestCase):
     def test_frontier_to_kimi(self) -> None:
         self.assertEqual(
             cap_model_for_low_openrouter_credit(
-                "anthropic/claude-sonnet-4.6",
+                "openai/gpt-5.4-mini",
                 balance_low=True,
             ),
             "moonshotai/kimi-k2.5",

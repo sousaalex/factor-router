@@ -19,7 +19,7 @@
 #  reasoning   │ 1–5        │ Coder 480B / 35B VLM / 3.5 Plus 1M / 397B… │ $1.00–$2.34
 #  reasoning+  │ 2–8        │ Kimi K2.5 / Grok 4.1 Fast              │ $0.50–$2.20
 #  complex     │ 5–12       │ GPT-5.4 Mini                            │ $4.50
-#  frontier    │ 10+        │ Claude Sonnet 4.6 (disabled)            │ $15.00
+#  frontier    │ 10+        │ Premium model for extreme long-horizon   │ $15.00
 # ─────────────────────────────────────────────────────────────────────────────
 #
 # COST ACCOUNTING (gateway → llm_usage_log, no code change when you edit prices):
@@ -138,6 +138,26 @@ models:
   #   not_for: >
   #     Broad business synthesis across multiple ERP domains, heavy multi-entity
   #     ambiguity, or deep conditional orchestration; escalate to reasoning+ or complex.
+
+  - id: "x-ai/grok-code-fast-1"
+    tier: "reasoning"
+    task_type: "reasoning"
+    tool_calls: "1-5"
+    context_window: 256000
+    pricing:
+      input_per_1m_tokens:  "$0.20"
+      output_per_1m_tokens: "$1.50"
+    description: >
+      Grok Code Fast 1 by xAI. Cheap reasoning-tier model for rapid coding and
+      general technical turns. Good default when the request is clearly simple
+      and does not need 1M context or heavy ERP synthesis.
+    best_for:
+      - "Fast code fixes, refactors, and debugging"
+      - "Simple technical questions and short repo work"
+      - "Low-latency routing when the task is obviously not frontier-grade"
+    not_for: >
+      Long-context work, heavy multimodal inputs, complex ERP synthesis, or
+      multi-step conditional orchestration.
 
   # - id: "qwen/qwen3.6-plus"
   #   tier: "reasoning"
@@ -324,43 +344,24 @@ models:
   #     Tasks that Qwen 397B (reasoning) or Kimi (reasoning+) can handle correctly.
   #     Do not use as default — escalate only when complexity genuinely demands it.
 
-  # ===========================================================================
-  # TIER: frontier  │ tool_calls: 10+  │ Cost: $15.00 output/M  [DISABLED]
-  # Explicit user request, massive context, iterative self-correction
-  # ===========================================================================
-
-  # - id: "anthropic/claude-sonnet-4.6"
-  #   tier: "frontier"
-  #   task_type: "frontier"
-  #   tool_calls: "10+"
-  #   context_window: 1000000
-  #   pricing:
-  #     input_per_1m_tokens:  "$3.00"
-  #     output_per_1m_tokens: "$15.00"
-  #   description: >
-  #     Claude Sonnet 4.6 by Anthropic. Frontier performance in coding, agents,
-  #     and professional work. 1M context. Excellent at iterative development,
-  #     complex codebase navigation, end-to-end project management, polished
-  #     document creation, and computer use. ABSOLUTE LAST RESORT — costs ~6.4x
-  #     more than Qwen 397B on output tokens. $3.00/$15.00 per 1M tokens.
-  #
-  #   USE ONLY WHEN:
-  #     - User explicitly requests Claude, frontier tier, or maximum capability
-  #       NOTE: "reasoning+" in product language = Kimi K2.5, NOT Claude
-  #     - 10+ tool calls with expected iterative self-correction and re-planning
-  #     - End-to-end project management with many dependencies
-  #     - Context >50K tokens where all other models lose coherence
-  #     - Polished long document creation (reports, proposals, contracts)
-  #     - Strategic business analysis requiring multi-dimensional reasoning
-  #   best_for:
-  #     - "Explicit frontier request: 'use Claude', 'frontier model', 'maximum capability'"
-  #     - "Iterative self-correction in very long and complex agentic workflows"
-  #     - "Polished document creation: 'prepare a full commercial proposal for client X'"
-  #     - "Strategic business analysis that GPT-5.4 Mini cannot reliably complete"
-  #   not_for: >
-  #     ANY task that Qwen (reasoning), Kimi (reasoning+), or GPT-5.4 Mini (complex)
-  #     can handle. Escalate ONLY on explicit user request or genuine frontier need.
-
+  - id: "openai/gpt-5.4-mini"
+    tier: "complex"
+    task_type: "complex"
+    tool_calls: "5-12"
+    context_window: 400000
+    pricing:
+      input_per_1m_tokens:  "$0.75"
+      output_per_1m_tokens: "$4.50"
+    description: >
+      GPT-5.4 Mini by OpenAI. Strong complex-tier model for deeper tool chains,
+      multi-step conditionals, and high-stakes workflows when Kimi or 397B is not
+      enough.
+    best_for:
+      - "5-12 tool calls with branching logic"
+      - "Cascading creation and multi-module reports"
+      - "High-stakes tasks where a stronger complex-tier model is justified"
+    not_for: >
+      Routine requests that can be handled by reasoning-tier or reasoning+ models.
 
 # =============================================================================
 # FALLBACK MODEL
@@ -388,6 +389,6 @@ default_model: "qwen/qwen3.5-plus-02-15"
 #  reasoning+  │ moonshotai/kimi-k2.5            │ 262K    │ $0.45     │ $2.20
 #  reasoning   │ qwen/qwen3.5-397b-a17b          │ 262K    │ $0.39     │ $2.34
 #  complex     │ openai/gpt-5.4-mini             │ 400K    │ $0.75     │ $4.50
-#  frontier    │ anthropic/claude-sonnet-4.6     │ 1M      │ $3.00     │ $15.00  [disabled]
+#  frontier    │ openai/gpt-5.4-mini             │ 400K    │ $0.75     │ $4.50
 #
 # =============================================================================

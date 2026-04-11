@@ -4,10 +4,10 @@
 
 Quando o saldo OpenRouter (USD) gravado na base de dados está **igual ou abaixo** de um limiar configurável, o gateway:
 
-1. **Injeta instruções extra** no *system prompt* do classificador local (Ollama), empurrando a escolha para modelos mais baratos.
+1. **Escolhe localmente** o `model_id` por heurísticas rápidas. Se `ROUTER_DECISION_MODE=llm`, o caminho antigo com classificador Ollama continua disponível.
 2. **Aplica um teto determinístico**: se o classificador ainda devolver um modelo das categorias **complex** ou **frontier** (definidas em `src/router/models_config.yaml`), o `model_id` efectivo é forçado para **`moonshotai/kimi-k2.5`** (tier reasoning+).
 
-Isto complementa a política de **modelo premium** (`apply_premium_model_policy`), que trata Claude só para `X-User-Id` na allowlist. O teto de crédito baixo pode ainda reduzir Claude → Kimi mesmo para utilizadores na allowlist (prioridade: poupança quando o snapshot indica saldo crítico).
+Isto complementa a política de **modelo premium** (`apply_premium_model_policy`), que trata o modelo premium só para `X-User-Id` na allowlist. O teto de crédito baixo pode ainda reduzir esse modelo → Kimi mesmo para utilizadores na allowlist (prioridade: poupança quando o snapshot indica saldo crítico).
 
 ---
 
@@ -39,7 +39,7 @@ Ordem relevante no primeiro POST de um turno (quando ainda não existe `model_id
 
 1. Calcular `budget_thr` (router threshold ou fallback para o do alerta).
 2. Se `openrouter_router_budget_enabled`: `snap_remaining = await read_remaining_usd_snapshot()`; `openrouter_balance_low = snap_remaining is not None and snap_remaining <= budget_thr`.
-3. `router_route(user_message, openrouter_balance_low=openrouter_balance_low)` → classificador com ou sem o bloco `LOW_OPENROUTER_BALANCE_BLOCK` em `src/router/classifier_prompt.py`.
+3. `router_route(user_message, openrouter_balance_low=openrouter_balance_low)` → decisão local por defeito; em modo LLM, classificador com ou sem o bloco `LOW_OPENROUTER_BALANCE_BLOCK` em `src/router/classifier_prompt.py`.
 4. `apply_premium_model_policy(settings, ctx, model_id)`.
 5. `cap_model_for_low_openrouter_credit(model_id, balance_low=openrouter_balance_low)` em `src/gateway/model_policy.py`.
 
@@ -52,8 +52,9 @@ Em **cada** POST ao mesmo turno (incluindo chamadas subsequentes):
 
 ## Classificador (Ollama)
 
-- **Prompt base:** `CLASSIFIER_SYSTEM_PROMPT` + `CLASSIFIER_USER_PROMPT`, construídos por `build_classifier_prompt()` em `src/router/classifier_prompt.py`.
-- **Modo baixo saldo:** com `openrouter_balance_low=True`, concatena-se `LOW_OPENROUTER_BALANCE_BLOCK` ao *system* (inglês), com regras explícitas: preferir o modelo default do tier *reasoning* (`qwen/qwen3.5-397b-a17b`), reservar `moonshotai/kimi-k2.5` (reasoning+) quando necessário, restringir GPT‑5.4 Mini e Claude exceto pedido explícito do utilizador.
+- **Modo normal:** heurístico local, sem chamada externa.
+- **Modo LLM:** `CLASSIFIER_SYSTEM_PROMPT` + `CLASSIFIER_USER_PROMPT`, construídos por `build_classifier_prompt()` em `src/router/classifier_prompt.py`.
+- **Modo baixo saldo:** com `openrouter_balance_low=True`, concatena-se `LOW_OPENROUTER_BALANCE_BLOCK` ao *system* (inglês), com regras explícitas: preferir o modelo default do tier *reasoning* (`qwen/qwen3.5-397b-a17b`), reservar `moonshotai/kimi-k2.5` (reasoning+) quando necessário, restringir GPT‑5.4 Mini exceto pedido explícito do utilizador.
 
 O classificador continua a devolver JSON `{"model": "..."}`; o *parsing* e fallbacks mantêm-se em `src/router/router.py` (`route`, `_call_classifier`, `_parse_model_from_response`).
 
@@ -99,5 +100,5 @@ flowchart TD
 ## Limitações conhecidas
 
 - Depende do **snapshot** na BD, não de uma consulta em tempo real ao OpenRouter por mensagem.
-- O classificador é heurístico; o **teto** garante um limite máximo de custo por *tier* (complex/frontier → Kimi) quando o modo está activo.
+- O router é heurístico por defeito; o **teto** garante um limite máximo de custo por *tier* (complex/frontier → Kimi) quando o modo está activo.
 - `DATABASE_URL` no gateway usa `postgresql+asyncpg://` na app; o *pool* asyncpg partilha a mesma origem que `read_remaining_usd_snapshot`.

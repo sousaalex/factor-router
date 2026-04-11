@@ -1,5 +1,5 @@
 """
-Testes do classificador (router) + política premium (Claude só na allowlist → Kimi).
+Testes do classificador (router) + política premium (modelo premium só na allowlist → Kimi).
 
 Correr na raiz do repo:
     uv run python -m unittest discover -s test -v
@@ -20,7 +20,7 @@ from src.router import router as router_mod
 from src.router.router import route
 
 
-PREMIUM = "anthropic/claude-sonnet-4.6"
+PREMIUM = "openai/gpt-5.4-mini"
 FALLBACK = "moonshotai/kimi-k2.5"
 
 
@@ -60,7 +60,7 @@ class TestPremiumModelPolicy(unittest.TestCase):
         out = apply_premium_model_policy(s, ctx, "qwen/qwen3.5-397b-a17b")
         self.assertEqual(out, "qwen/qwen3.5-397b-a17b")
 
-    def test_premium_user_on_allowlist_keeps_claude(self) -> None:
+    def test_premium_user_on_allowlist_keeps_premium(self) -> None:
         s = _settings(allowlist="allowed-user,foo")
         ctx = _ctx("allowed-user")
         out = apply_premium_model_policy(s, ctx, PREMIUM)
@@ -104,41 +104,43 @@ class TestPremiumModelPolicy(unittest.TestCase):
 
 
 class TestRouterThenPolicy(unittest.TestCase):
-    """Simula classificador a devolver Claude; política aplica allowlist."""
+    """Simula classificador a devolver o modelo premium; política aplica allowlist."""
 
-    def test_classifier_claude_allowlisted_stays_claude(self) -> None:
+    def test_classifier_premium_allowlisted_stays_premium(self) -> None:
         async def run() -> str:
             mock_ret = (f'{{"model": "{PREMIUM}"}}', 10, 10, 1.0)
-            with patch.object(router_mod, "OLLAMA_BASE_URL", "http://localhost:11434"):
-                with patch.object(
-                    router_mod,
-                    "_call_classifier",
-                    new=AsyncMock(return_value=mock_ret),
-                ):
-                    rr = await route("preciso de capacidade máxima explícita claude frontier")
-                    return apply_premium_model_policy(
-                        _settings(allowlist="mac-client"),
-                        _ctx("mac-client"),
-                        rr.model_id,
-                    )
+            with patch.object(router_mod, "ROUTER_DECISION_MODE", "llm"):
+                with patch.object(router_mod, "OLLAMA_BASE_URL", "http://localhost:11434"):
+                    with patch.object(
+                        router_mod,
+                        "_call_classifier",
+                        new=AsyncMock(return_value=mock_ret),
+                    ):
+                        rr = await route("preciso de capacidade máxima explícita e frontier")
+                        return apply_premium_model_policy(
+                            _settings(allowlist="mac-client"),
+                            _ctx("mac-client"),
+                            rr.model_id,
+                        )
 
         self.assertEqual(asyncio.run(run()), PREMIUM)
 
-    def test_classifier_claude_not_allowlisted_becomes_kimi(self) -> None:
+    def test_classifier_premium_not_allowlisted_becomes_kimi(self) -> None:
         async def run() -> str:
             mock_ret = (f'{{"model": "{PREMIUM}"}}', 10, 10, 1.0)
-            with patch.object(router_mod, "OLLAMA_BASE_URL", "http://localhost:11434"):
-                with patch.object(
-                    router_mod,
-                    "_call_classifier",
-                    new=AsyncMock(return_value=mock_ret),
-                ):
-                    rr = await route("ignored — mock fixes model")
-                    return apply_premium_model_policy(
-                        _settings(allowlist="only-vip"),
-                        _ctx("other-user"),
-                        rr.model_id,
-                    )
+            with patch.object(router_mod, "ROUTER_DECISION_MODE", "llm"):
+                with patch.object(router_mod, "OLLAMA_BASE_URL", "http://localhost:11434"):
+                    with patch.object(
+                        router_mod,
+                        "_call_classifier",
+                        new=AsyncMock(return_value=mock_ret),
+                    ):
+                        rr = await route("ignored — mock fixes model")
+                        return apply_premium_model_policy(
+                            _settings(allowlist="only-vip"),
+                            _ctx("other-user"),
+                            rr.model_id,
+                        )
 
         self.assertEqual(asyncio.run(run()), FALLBACK)
 

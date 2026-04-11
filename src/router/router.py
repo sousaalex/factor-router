@@ -10,6 +10,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
@@ -45,8 +47,9 @@ class RouterResult:
 
 
 OLLAMA_BASE_URL    = os.getenv("OLLAMA_BASE_URL", "")
-CLASSIFIER_MODEL   = os.getenv("CLASSIFIER_MODEL", "")
-CLASSIFIER_TIMEOUT = float(os.getenv("CLASSIFIER_TIMEOUT_SECONDS", "8.0"))
+CLASSIFIER_MODEL   = os.getenv("CLASSIFIER_MODEL", "qwen2.5:0.5b")
+CLASSIFIER_TIMEOUT = float(os.getenv("CLASSIFIER_TIMEOUT_SECONDS", "2.5"))
+ROUTER_DECISION_MODE = os.getenv("ROUTER_DECISION_MODE", "heuristic").strip().lower()
 # native → POST /api/chat (Ollama). openai → POST /v1/chat/completions (Ollama recente, LM Studio, etc.)
 _CLASSIFIER_API_RAW = (os.getenv("OLLAMA_CLASSIFIER_API") or "native").strip().lower()
 
@@ -129,6 +132,107 @@ def _classifier_uses_openai_path() -> bool:
     return _CLASSIFIER_API_RAW in ("openai", "v1", "compatible", "openai_compatible")
 
 
+def _normalize_match_text(text: str) -> str:
+    text = (text or "").strip().lower()
+    text = unicodedata.normalize("NFKD", text)
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    text = re.sub(r"\s+", " ", text)
+    return text
+
+
+def _content_has_image(content: Any) -> bool:
+    if isinstance(content, list):
+        for part in content:
+            if _content_has_image(part):
+                return True
+        return False
+    if isinstance(content, dict):
+        part_type = str(content.get("type") or "").strip().lower()
+        if part_type in {"image", "image_url", "input_image"}:
+            return True
+        data = content.get("image_url")
+        if isinstance(data, dict) and data.get("url"):
+            return True
+        return False
+    return False
+
+
+def _looks_like_business_work(text: str) -> bool:
+    tokens = (
+        "invoice",
+        "order",
+        "customer",
+        "client",
+        "company",
+        "account",
+        "stock",
+        "product",
+        "quote",
+        "budget",
+        "erp",
+        "many2one",
+        "m2o",
+        "purchase",
+        "sale",
+        "approval",
+        "report",
+        "revenue",
+        "margin",
+        "ledger",
+    )
+    return any(token in text for token in tokens)
+
+
+def _heuristic_route_model(
+    user_message: str,
+    *,
+    has_image: bool = False,
+    openrouter_balance_low: bool = False,
+) -> str:
+    """
+    Decide o modelo localmente, sem chamar um LLM.
+
+    O objectivo é devolver o `model_id` em poucas microssegundos/milissegundos
+    e reservar o classificador LLM para um modo explícito de compatibilidade.
+    """
+    text = _normalize_match_text(user_message)
+    if not text:
+        return _DEFAULT_MODEL
+
+    if any(term in text for term in ("gpt-5.4-mini", "gpt 5.4 mini", "complex tier", "complex")):
+        return "openai/gpt-5.4-mini"
+
+    if any(term in text for term in ("frontier", "maximum capability", "maximum", "best available")):
+        return "openai/gpt-5.4-mini"
+
+    if any(term in text for term in ("reasoning+", "reasoning plus", "kimi", "k2.5", "kimi k2.5")):
+        return "moonshotai/kimi-k2.5"
+
+    if has_image or any(term in text for term in ("screenshot", "image", "chart", "plot", "diagram", "mockup", "pdf", "vision", "visual")):
+        if any(term in text for term in ("code", "coding", "refactor", "debug", "implement", "ui", "frontend")):
+            return "moonshotai/kimi-k2.5"
+        if len(text) > 8_000 or any(term in text for term in ("document", "transcript", "logs", "paste", "long context")):
+            return "qwen/qwen3.5-plus-02-15"
+        return "qwen/qwen3.5-plus-02-15"
+
+    if len(text) > 12_000 or any(term in text for term in ("long context", "full repo", "full file", "entire repo", "transcript", "log dump")):
+        return "qwen/qwen3.5-plus-02-15"
+
+    if any(term in text for term in ("many2one", "lookup", "resolve id", "resolve the id", "multi-step", "multi step", "conditional", "if then", "if/else", "cascade")):
+        return "moonshotai/kimi-k2.5"
+
+    if any(term in text for term in ("create", "update", "delete", "approve", "assign", "sync", "orchestrate")) and _looks_like_business_work(text):
+        return "x-ai/grok-code-fast-1" if openrouter_balance_low else "qwen/qwen3.5-397b-a17b"
+
+    if any(term in text for term in ("code", "bug", "fix", "refactor", "implement", "test", "repo", "pull request", "python", "typescript", "javascript", "react", "api", "endpoint", "class", "function")):
+        return "x-ai/grok-code-fast-1"
+
+    if _looks_like_business_work(text):
+        return "x-ai/grok-code-fast-1" if openrouter_balance_low else "qwen/qwen3.5-397b-a17b"
+
+    return "x-ai/grok-code-fast-1"
+
+
 async def _call_classifier(
     user_message: str,
     est_in: int,
@@ -157,7 +261,7 @@ async def _call_classifier(
                 "messages": messages,
                 "stream": False,
                 "temperature": 0,
-                "max_tokens": 256,
+                "max_tokens": 16,
             }
             response = await client.post(url, json=payload)
             response.raise_for_status()
@@ -177,7 +281,7 @@ async def _call_classifier(
             "messages": messages,
             "stream": False,
             "think": False,
-            "options": {"temperature": 0.0, "num_predict": 64},
+            "options": {"temperature": 0.0, "num_predict": 16},
         }
         response = await client.post(url, json=payload)
         response.raise_for_status()
@@ -214,12 +318,36 @@ async def route(user_message: Any, *, openrouter_balance_low: bool = False) -> R
     Accepta str ou content OpenAI multimodal (lista de partes).
     Always returns a valid result — never raises an exception.
     """
+    raw_user_message = user_message
     user_message = flatten_openai_message_content(user_message)
     if not user_message or not user_message.strip():
         print(f"[LLMRouter] model: {_DEFAULT_MODEL}")
         return RouterResult(model_id=_DEFAULT_MODEL, input_tokens=0, output_tokens=0, raw_response="(empty message — default)")
 
     est_in, est_out = estimate_request_tokens(user_message)
+
+    if ROUTER_DECISION_MODE != "llm":
+        model_id = _heuristic_route_model(
+            user_message,
+            has_image=_content_has_image(raw_user_message),
+            openrouter_balance_low=openrouter_balance_low,
+        )
+        logger.info(
+            "[Router] heuristic '%s...' -> %s (mode=%s)",
+            user_message[:50],
+            model_id,
+            ROUTER_DECISION_MODE,
+        )
+        print(f"[LLMRouter] model: {model_id}")
+        return RouterResult(
+            model_id=model_id,
+            input_tokens=0,
+            output_tokens=0,
+            raw_response=f"(heuristic:{ROUTER_DECISION_MODE})",
+            eval_duration_ms=0.0,
+            estimated_input_tokens=est_in,
+            estimated_output_tokens=est_out,
+        )
 
     base = (OLLAMA_BASE_URL or "").strip().rstrip("/")
     if not base:
@@ -246,7 +374,7 @@ async def route(user_message: Any, *, openrouter_balance_low: bool = False) -> R
             base,
             openrouter_balance_low=openrouter_balance_low,
         )
-        model_id, fallback = _parse_model_from_response(content)
+        model_id, _fallback = _parse_model_from_response(content)
         logger.info("[Router] '%s...' -> %s (est ~%d tokens, clf in=%d out=%d, %sms)",
                     user_message[:50], model_id, est_in + est_out, inp, out,
                     f"{duration_ms:.0f}" if duration_ms else "?")

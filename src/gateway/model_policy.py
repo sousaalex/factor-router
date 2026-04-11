@@ -1,5 +1,5 @@
 """
-Políticas opcionais por modelo (ex.: Claude frontier só para X-User-Id na allowlist;
+Políticas opcionais por modelo (modelo premium só para X-User-Id na allowlist;
 outros utilizadores fazem downgrade para Kimi (ou modelo configurado).
 """
 from __future__ import annotations
@@ -38,7 +38,7 @@ def _user_in_premium_allowlist(settings: "Settings", ctx: "GatewayContext") -> b
 
 def apply_premium_model_policy(settings: "Settings", ctx: "GatewayContext", model_id: str) -> str:
     """
-    Se o router escolheu o modelo premium (ex. Claude Sonnet) e o utilizador não está
+    Se o router escolheu o modelo premium e o utilizador não está
     na allowlist, devolve GATEWAY_PREMIUM_MODEL_FALLBACK (Kimi por defeito) — sem 403.
 
     Allowlist vazia com premium definido → 503 (config inválida).

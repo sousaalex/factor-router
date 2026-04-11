@@ -33,7 +33,7 @@ Variáveis opcionais (têm default):
     WHISPER_UPSTREAM_TIMEOUT — timeout em segundos para upload/transcrição de áudio
     ACCUMULATOR_IDLE_TTL_SECONDS — inatividade máxima do balde (ver accumulator)
     OPENROUTER_MANAGEMENT_API_KEY (opcional), OPENROUTER_CREDITS_* , OPENROUTER_ROUTER_BUDGET_* — créditos / router económico
-    GATEWAY_PREMIUM_MODEL + ALLOWLIST + FALLBACK — Claude só para alguns users; outros → Kimi (default)
+    GATEWAY_PREMIUM_MODEL + ALLOWLIST + FALLBACK — modelo premium só para alguns users; outros → Kimi (default)
 """
 from __future__ import annotations
 
@@ -124,8 +124,8 @@ class Settings(BaseSettings):
     gateway_premium_model: str = Field(
         default="",
         description=(
-            "Model_id (ex. anthropic/claude-sonnet-4.6) reservado: só X-User-Id em "
-            "GATEWAY_PREMIUM_MODEL_USER_ALLOWLIST pode usá-lo. Vazio = desligado."
+            "Model_id reservado: só X-User-Id em GATEWAY_PREMIUM_MODEL_USER_ALLOWLIST "
+            "pode usá-lo. Vazio = desligado."
         ),
     )
     gateway_premium_model_user_allowlist: str = Field(

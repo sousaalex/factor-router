@@ -163,10 +163,11 @@ Um único `.env` para o gateway e para o Postgres.
 | `AUTH0_ISSUER` | — | Opcional; default `https://<AUTH0_DOMAIN>/` |
 | `AUTH0_JWT_LEEWAY_SECONDS` | — | Default `0` |
 | `OLLAMA_BASE_URL` | ✓ | `http://host.docker.internal:11434` |
-| `CLASSIFIER_MODEL` | ✓ | Modelo Ollama para classificação (ex: `qwen2.5:0.5b`) |
+| `ROUTER_DECISION_MODE` | — | `heuristic` por defeito; `llm` ativa o classificador Ollama antigo |
+| `CLASSIFIER_MODEL` | — | Modelo Ollama usado só em `ROUTER_DECISION_MODE=llm` (default: `qwen2.5:0.5b`) |
 | `UPSTREAM_URL` | — | Default: `https://openrouter.ai/api/v1` |
 | `UPSTREAM_TIMEOUT` | — | Default: `120` segundos |
-| `CLASSIFIER_TIMEOUT_SECONDS` | — | Default: `6.0` segundos |
+| `CLASSIFIER_TIMEOUT_SECONDS` | — | Default: `2.5` segundos no modo `llm` |
 | `HOST` | — | Default: `0.0.0.0` |
 | `PORT` | — | Default: `8003` |
 | `LOG_LEVEL` | — | Default: `info` |
@@ -490,16 +491,16 @@ SELECT * FROM llm_usage_log WHERE turn_id = 'uuid-do-turno';
 
 ## Router de Modelos
 
-O router usa um modelo Ollama local (gratuito) para classificar cada mensagem e escolher o modelo LLM mais adequado de `models_config.yaml`.
+O router faz a escolha localmente por defeito, sem chamar um LLM, e devolve o `model_id` imediatamente.
 
 ### Como funciona
 
 ```
 Mensagem: "Qual o saldo da conta corrente?"
        ↓
-Ollama (qwen2.5:0.5b) classifica → complexidade: baixa, tipo: consulta
+Router heurístico local → escolhe o `model_id` em memória
        ↓
-models_config.yaml → modelo barato escolhido (ex: gpt-4o-mini)
+models_config.yaml → modelo mais adequado escolhido
        ↓
 X-Turn-Id guardado com model_id → próximos calls do mesmo turno usam mesmo modelo
 ```
@@ -507,24 +508,13 @@ X-Turn-Id guardado com model_id → próximos calls do mesmo turno usam mesmo mo
 ### Configuração
 
 ```yaml
-# models_config.yaml
-default_model: openai/gpt-4o-mini
-
-models:
-  - id: openai/gpt-4o-mini
-    description: Consultas simples, respostas directas
-    input_per_1m_tokens: 0.15
-    output_per_1m_tokens: 0.60
-
-  - id: openai/gpt-4o
-    description: Análise complexa, raciocínio multi-passo
-    input_per_1m_tokens: 2.50
-    output_per_1m_tokens: 10.00
+ROUTER_DECISION_MODE=heuristic
+CLASSIFIER_MODEL=qwen2.5:0.5b   # usado só se ROUTER_DECISION_MODE=llm
 ```
 
 ### Fallback
 
-Se o Ollama não estiver disponível ou exceder o timeout, o gateway usa o `default_model` automaticamente. O agente nunca recebe um erro por falha do router.
+Se activares `ROUTER_DECISION_MODE=llm`, o gateway volta ao classificador Ollama e, se houver falha, usa o `default_model` automaticamente. No modo por defeito, a decisão é local e não há chamada externa.
 
 ---
 
@@ -709,7 +699,7 @@ Os ficheiros de teste estão em **`test/`**. Relatórios gerados (coverage HTML,
 # Dependências + coverage (opcional)
 uv sync --extra dev
 
-# Unitários (unittest) — router, créditos OpenRouter, política Claude/Kimi
+# Unitários (unittest) — router, créditos OpenRouter, política premium/Kimi
 uv run python -m unittest discover -s test -v
 
 # Unitários + cobertura HTML + test_report.html em test/result/

@@ -44,8 +44,8 @@ HOW TO REASON (always follow these steps before deciding):
         • Light vision+language (image/chart/screenshot Q&A) with 1-5 tools, not heavy visual-agent work, within 262K → qwen/qwen3.5-35b-a3b
         • ERP/business-first Agiweb work or general reasoning without a code-centric ask → qwen/qwen3.5-397b-a17b
         • If qwen/qwen3.6-plus is in the catalog, it is also reasoning-tier general/coding breadth (when enabled)
-    → 2-3 hops or mild multi-step = reasoning+ tier → moonshotai/kimi-k2.5 (NOT Claude)
-    → 4+ hops with conditionals = complex (GPT-5.4 Mini) or true frontier (Claude only if justified)
+    → 2-3 hops or mild multi-step = reasoning+ tier → moonshotai/kimi-k2.5
+    → 4+ hops with conditionals = complex (GPT-5.4 Mini) or frontier (GPT-5.4 Mini only if justified)
 
   CODING VS VISION VS KIMI:
     • Text-only repository / engineering with 1-5 tools → prefer qwen/qwen3.5-35b-a3b for simple cases; use Plus when context exceeds ~262K; escalate to Kimi for reasoning+ depth.
@@ -85,10 +85,10 @@ HOW TO REASON (always follow these steps before deciding):
       - qwen/qwen3.5-35b-a3b is the reasoning-tier native VLM for light image+text within ~262K; it is NOT a substitute for Kimi on heavy visual-agent or 2-8 tool ERP flows.
       - qwen/qwen3.6-plus (when listed) is NOT a chat-only simple model; treat it as reasoning-tier expertise.
       - When the user says "reasoning+", "reasoning plus", or the product tier "reasoning+",
-        they mean the Kimi K2.5 model (moonshotai/kimi-k2.5) — NOT Claude Sonnet.
-      - Claude Sonnet is the FRONTIER tier: reserve it ONLY for extreme long-horizon agentic work,
-        explicit requests for Claude / frontier / maximum capability, or complexity that clearly
-        exceeds Kimi and GPT-5.4 Mini. It costs ~6.4x more on output than qwen/qwen3.5-397b-a17b — last resort.
+        they mean the Kimi K2.5 model (moonshotai/kimi-k2.5).
+      - GPT-5.4 Mini is the FRONTIER/complex ceiling in this configuration: reserve it ONLY for
+        extreme long-horizon agentic work, explicit requests for frontier capability, or complexity
+        that clearly exceeds Kimi. It is a last resort.
 
 PRINCIPLE: Good, Clean, and Cheap.
   Underestimating complexity = agent fails, user loses trust.
