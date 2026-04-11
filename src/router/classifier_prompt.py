@@ -28,13 +28,10 @@ TIER 2 (reasoning): Coding tasks, long context >262K, vision+text analysis, mult
 TIER 3 (reasoning+): Many2one resolution WITH cross-entity synthesis, 2-8 tool calls
   Examples: "criar fatura para cliente X com produtos do orçamento Y"
 
-TIER 4 (complex): 5-12 tool calls with branching logic, cascading creation
-  Examples: "criar cliente, contacto, projeto e tarefa com condicionais complexas"
-
 RULES:
 - Default to the LOWEST tier that can handle the task
 - Only escalate when multi-entity orchestration is clearly required
-- Reply with ONLY: {{"tier": 1}} or {{"tier": 2}} or {{"tier": 3}} or {{"tier": 4}}
+- Reply with ONLY: {{"tier": 1}} or {{"tier": 2}} or {{"tier": 3}}
 - NO explanation, NO markdown, ONLY the JSON
 """
 
@@ -49,7 +46,7 @@ CLASSIFIER_USER_PROMPT = """User message: "{user_message}"
 
 Estimated tokens: input ~{est_input}, output ~{est_output}.
 
-Reply with ONLY: {{"tier": N}} where N is 1, 2, 3, or 4."""
+Reply with ONLY: {{"tier": N}} where N is 1, 2, or 3."""
 
 
 def build_classifier_prompt(
