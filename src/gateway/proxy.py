@@ -563,8 +563,9 @@ async def handle_chat_completions(
                 user_message = flatten_openai_message_content(ctx.user_message)
 
             router_result = await router_route(
-                user_message,
+                raw_content if raw_content is not None else user_message,
                 openrouter_balance_low=openrouter_balance_low,
+                tool_choice=body.get("tool_choice"),
             )
             model_id = router_result.model_id
             model_id = apply_premium_model_policy(settings, ctx, model_id)

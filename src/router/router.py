@@ -187,6 +187,7 @@ def _heuristic_route_model(
     user_message: str,
     *,
     has_image: bool = False,
+    tool_choice: Any = None,
     openrouter_balance_low: bool = False,
 ) -> str:
     """
@@ -198,6 +199,12 @@ def _heuristic_route_model(
     text = _normalize_match_text(user_message)
     if not text:
         return _DEFAULT_MODEL
+
+    if tool_choice == "required":
+        return "openai/gpt-4.1-mini"
+
+    if any(term in text for term in ("video", "audio", "omni-modal", "omnimodal", "multimodal")):
+        return "xiaomi/mimo-v2-omni"
 
     if any(term in text for term in ("complex tier", "complex")):
         return "moonshotai/kimi-k2.5"
@@ -224,8 +231,8 @@ def _heuristic_route_model(
     if any(term in text for term in ("create", "update", "delete", "approve", "assign", "sync", "orchestrate")) and _looks_like_business_work(text):
         return "qwen/qwen3.5-397b-a17b"
 
-    if any(term in text for term in ("code", "bug", "fix", "refactor", "implement", "test", "repo", "pull request", "python", "typescript", "javascript", "react", "api", "endpoint", "class", "function")):
-        return "qwen/qwen3.5-397b-a17b"
+    if any(term in text for term in ("code", "bug", "fix", "refactor", "implement", "test", "repo", "pull request", "python", "typescript", "javascript", "react", "api", "endpoint", "class", "function", "frontend", "3d", "game")):
+        return "qwen/qwen3.6-plus"
 
     if _looks_like_business_work(text):
         return "qwen/qwen3.5-397b-a17b"
@@ -233,7 +240,7 @@ def _heuristic_route_model(
     return "qwen/qwen3.5-397b-a17b" if openrouter_balance_low else _DEFAULT_MODEL
 
 
-def _heuristic_is_confident(user_message: str) -> bool:
+def _heuristic_is_confident(user_message: str, *, tool_choice: Any = None) -> bool:
     """
     Heurística de confiança para o modo híbrido.
 
@@ -241,6 +248,8 @@ def _heuristic_is_confident(user_message: str) -> bool:
     """
     text = _normalize_match_text(user_message)
     if not text:
+        return True
+    if tool_choice == "required":
         return True
 
     confident_markers = (
@@ -379,12 +388,64 @@ async def _call_classifier(
     return content.strip(), inp, out, duration_ms
 
 
-# Tier to model mapping (deterministic)
-_TIER_MODEL_MAP: dict[int, str] = {
-    1: "qwen/qwen3.5-397b-a17b",      # simple: routine ERP, greetings
-    2: "qwen/qwen3.5-plus-02-15",     # reasoning: coding, long context
-    3: "moonshotai/kimi-k2.5",        # reasoning+: multi-entity orchestration
-}
+def _select_model_for_tier(
+    tier: int,
+    *,
+    user_message: str,
+    raw_user_message: Any,
+    tool_choice: Any = None,
+) -> str:
+    text = _normalize_match_text(user_message)
+    has_image = _content_has_image(raw_user_message)
+    has_omni_signal = has_image or any(
+        term in text for term in ("video", "audio", "omni-modal", "omnimodal", "multimodal", "vision")
+    )
+
+    if tier == 1:
+        return "qwen/qwen3.5-397b-a17b"
+
+    if tier == 2:
+        if tool_choice == "required":
+            return "openai/gpt-4.1-mini"
+        if has_omni_signal and any(term in text for term in ("video", "audio", "omni", "multimodal")):
+            return "xiaomi/mimo-v2-omni"
+        if any(
+            term in text
+            for term in ("code", "coding", "refactor", "debug", "implement", "frontend", "3d", "game", "repo")
+        ):
+            return "qwen/qwen3.6-plus"
+        if len(text) > 12_000 or any(term in text for term in ("long context", "full repo", "full file", "transcript", "log dump")):
+            return "qwen/qwen3.5-plus-02-15"
+        return "openai/gpt-4.1-mini"
+
+    if tier == 3:
+        if tool_choice == "required":
+            return "openai/gpt-4.1-mini"
+        if any(
+            term in text
+            for term in ("code", "coding", "refactor", "debug", "implement", "frontend", "3d", "game", "repo")
+        ) and not _looks_like_business_work(text):
+            return "qwen/qwen3.6-plus"
+        if has_omni_signal:
+            return "xiaomi/mimo-v2-omni"
+        strong_tier3_markers = (
+            "many2one",
+            "resolve id",
+            "resolve the id",
+            "multi-step",
+            "multi step",
+            "conditional",
+            "if then",
+            "if/else",
+            "cascade",
+            "cross-entity",
+            "cross entity",
+        )
+        if not any(marker in text for marker in strong_tier3_markers):
+            return "qwen/qwen3.5-plus-02-15"
+        return "moonshotai/kimi-k2.5"
+
+    return _DEFAULT_MODEL
 
 
 def _parse_model_from_response(raw: str) -> tuple[str, Optional[str]]:
@@ -406,11 +467,7 @@ def _parse_model_from_response(raw: str) -> tuple[str, Optional[str]]:
         if tier is not None:
             try:
                 tier_int = int(tier)
-                model_id = _TIER_MODEL_MAP.get(tier_int)
-                if model_id:
-                    return model_id, None
-                logger.warning("[Router] Unknown tier '%s' — fallback to: %s", tier, _DEFAULT_MODEL)
-                return _DEFAULT_MODEL, "unknown_tier"
+                return f"__tier__:{tier_int}", None
             except (ValueError, TypeError):
                 pass
 
@@ -425,7 +482,12 @@ def _parse_model_from_response(raw: str) -> tuple[str, Optional[str]]:
         return _DEFAULT_MODEL, "parse_error"
 
 
-async def route(user_message: Any, *, openrouter_balance_low: bool = False) -> RouterResult:
+async def route(
+    user_message: Any,
+    *,
+    openrouter_balance_low: bool = False,
+    tool_choice: Any = None,
+) -> RouterResult:
     """
     Given the user message, returns the model to use.
     Accepta str ou content OpenAI multimodal (lista de partes).
@@ -441,11 +503,14 @@ async def route(user_message: Any, *, openrouter_balance_low: bool = False) -> R
     heuristic_model = _heuristic_route_model(
         user_message,
         has_image=_content_has_image(raw_user_message),
+        tool_choice=tool_choice,
         openrouter_balance_low=openrouter_balance_low,
     )
     decision_mode = ROUTER_DECISION_MODE if ROUTER_DECISION_MODE in {"heuristic", "hybrid", "llm"} else "hybrid"
 
-    if decision_mode == "heuristic" or (decision_mode == "hybrid" and _heuristic_is_confident(user_message)):
+    if decision_mode == "heuristic" or (
+        decision_mode == "hybrid" and _heuristic_is_confident(user_message, tool_choice=tool_choice)
+    ):
         model_id = heuristic_model
         logger.info(
             "[Router] heuristic '%s...' -> %s (mode=%s)",
@@ -469,7 +534,7 @@ async def route(user_message: Any, *, openrouter_balance_low: bool = False) -> R
 
     base = (OLLAMA_BASE_URL or "").strip().rstrip("/")
     if not base:
-        fallback_model = heuristic_model if decision_mode == "hybrid" else _DEFAULT_MODEL
+        fallback_model = heuristic_model if decision_mode in {"hybrid", "llm"} else _DEFAULT_MODEL
         logger.warning(
             "[Router] OLLAMA_BASE_URL não definido — a usar modelo fallback: %s",
             fallback_model,
@@ -493,7 +558,19 @@ async def route(user_message: Any, *, openrouter_balance_low: bool = False) -> R
             base,
             openrouter_balance_low=openrouter_balance_low,
         )
-        model_id, _fallback = _parse_model_from_response(content)
+        model_id, fallback_reason = _parse_model_from_response(content)
+        if fallback_reason and decision_mode == "llm":
+            model_id = heuristic_model
+        if model_id.startswith("__tier__:"):
+            tier = int(model_id.split(":", 1)[1])
+            model_id = _select_model_for_tier(
+                tier,
+                user_message=user_message,
+                raw_user_message=raw_user_message,
+                tool_choice=tool_choice,
+            )
+        if tool_choice == "required":
+            model_id = "openai/gpt-4.1-mini"
         logger.info("[Router] '%s...' -> %s (est ~%d tokens, clf in=%d out=%d, %sms)",
                     user_message[:50], model_id, est_in + est_out, inp, out,
                     f"{duration_ms:.0f}" if duration_ms else "?")
@@ -503,7 +580,7 @@ async def route(user_message: Any, *, openrouter_balance_low: bool = False) -> R
                            estimated_input_tokens=est_in, estimated_output_tokens=est_out)
 
     except httpx.TimeoutException:
-        fallback_model = heuristic_model if decision_mode == "hybrid" else _DEFAULT_MODEL
+        fallback_model = heuristic_model if decision_mode in {"hybrid", "llm"} else _DEFAULT_MODEL
         logger.warning("[Router] Classifier timeout (%.1fs) — falling back to: %s", CLASSIFIER_TIMEOUT, fallback_model)
         print(f"[Router] Classifier timeout ({CLASSIFIER_TIMEOUT}s) — falling back to: {fallback_model}")
         print(f"[LLMRouter] model: {fallback_model}")
@@ -511,7 +588,7 @@ async def route(user_message: Any, *, openrouter_balance_low: bool = False) -> R
                            raw_response="(timeout)", estimated_input_tokens=est_in, estimated_output_tokens=est_out)
 
     except httpx.ConnectError as e:
-        fallback_model = heuristic_model if decision_mode == "hybrid" else _DEFAULT_MODEL
+        fallback_model = heuristic_model if decision_mode in {"hybrid", "llm"} else _DEFAULT_MODEL
         hint = (
             " Dentro de Docker, usa OLLAMA_BASE_URL=http://host.docker.internal:11434 "
             "(ou o hostname do serviço na rede), não localhost."
@@ -538,7 +615,7 @@ async def route(user_message: Any, *, openrouter_balance_low: bool = False) -> R
         )
 
     except httpx.RequestError as e:
-        fallback_model = heuristic_model if decision_mode == "hybrid" else _DEFAULT_MODEL
+        fallback_model = heuristic_model if decision_mode in {"hybrid", "llm"} else _DEFAULT_MODEL
         logger.error(
             "[Router] Erro de rede ao falar com Ollama (%s): %s — falling back to: %s",
             OLLAMA_BASE_URL,
@@ -603,7 +680,7 @@ async def route(user_message: Any, *, openrouter_balance_low: bool = False) -> R
         )
 
     except Exception as e:
-        fallback_model = heuristic_model if decision_mode == "hybrid" else _DEFAULT_MODEL
+        fallback_model = heuristic_model if decision_mode in {"hybrid", "llm"} else _DEFAULT_MODEL
         logger.error("[Router] Unexpected error: %s — falling back to: %s", e, fallback_model)
         print(f"[Router] Unexpected error: {e} — falling back to: {fallback_model}")
         print(f"[LLMRouter] model: {fallback_model}")
