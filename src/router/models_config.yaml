@@ -345,7 +345,7 @@ models:
 # FALLBACK MODEL
 # Used when the classifier cannot determine the tier with confidence.
 # =============================================================================
-default_model: "qwen/qwen3.5-plus-02-15"
+default_model: "xiaomi/mimo-v2-omni"
 
 
 # =============================================================================
