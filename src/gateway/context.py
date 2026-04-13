@@ -9,7 +9,7 @@ O GatewayContext só guarda o contexto de negócio (sessão, utilizador, empresa
 Headers obrigatórios (ausente = 400):
     X-Turn-Id         — UUID v4 gerado pelo agente no início de cada turno
     X-Session-Id      — ID da sessão de chat
-    X-User-Message    — primeiros 300 chars da mensagem do utilizador
+    X-User-Message    — texto da mensagem do utilizador (completo; URL-encoded se necessário)
 
 Headers obrigatórios que aceitam "null" (ausente = 400, valor desconhecido = "null"):
     X-Conversation-Id
@@ -181,7 +181,7 @@ class GatewayContext:
             turn_id=turn_id,
             session_id=session_id,
             conversation_id=conversation_id,
-            user_message=_decode(user_msg)[:300],
+            user_message=_decode(user_msg),
             user_id=user_id,
             user_name=user_name,
             user_email=user_email,

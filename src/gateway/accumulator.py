@@ -179,14 +179,21 @@ class TurnAccumulator:
         model_id: str,
         router_est_input_tokens: int = 0,
         router_est_output_tokens: int = 0,
+        *,
+        usage_user_message: str | None = None,
     ) -> TurnBucket:
         """
         Abre (ou reabre) um balde para o turn_id dado.
 
         Se o balde já existir (agente faz 2º call do mesmo turno),
         não recria — apenas devolve o existente.
+
+        usage_user_message:
+            Texto completo da última mensagem user (ex.: extraído do JSON do body).
+            Se vazio/None, usa ctx.user_message (header X-User-Message).
         """
         bucket_id = ctx.accumulator_bucket_id
+        recorded_msg = (usage_user_message or "").strip() or (ctx.user_message or "")
         async with self._lock:
             if bucket_id not in self._buckets:
                 self._buckets[bucket_id] = TurnBucket(
@@ -194,7 +201,7 @@ class TurnAccumulator:
                     app_id=ctx.app_id,
                     session_id=ctx.session_id,
                     conversation_id=ctx.conversation_id,
-                    user_message=ctx.user_message,
+                    user_message=recorded_msg,
                     user_id=ctx.user_id,
                     user_name=ctx.user_name,
                     user_email=ctx.user_email,

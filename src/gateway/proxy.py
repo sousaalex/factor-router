@@ -542,11 +542,24 @@ async def handle_chat_completions(
     if model_id is None:
         if is_title:
             model_id = GATEWAY_TITLE_MODEL_ID
+            _raw_title_user = next(
+                (
+                    m.get("content")
+                    for m in reversed(messages)
+                    if m.get("role") == "user"
+                ),
+                None,
+            )
+            _title_usage_msg = (
+                flatten_openai_message_content(_raw_title_user).strip()
+                or (ctx.user_message or "").strip()
+            )
             await accumulator.open(
                 ctx=ctx,
                 model_id=model_id,
                 router_est_input_tokens=0,
                 router_est_output_tokens=0,
+                usage_user_message=_title_usage_msg or None,
             )
         else:
             # Primeiro call deste turno → chama router UMA VEZ
@@ -579,6 +592,7 @@ async def handle_chat_completions(
                 model_id=model_id,
                 router_est_input_tokens=router_result.estimated_input_tokens,
                 router_est_output_tokens=router_result.estimated_output_tokens,
+                usage_user_message=user_message.strip() or None,
             )
 
     else:

@@ -82,7 +82,7 @@ async def record_turn_usage(
     output_price    = float(model_info.get("output_per_1m_tokens", 0.0))
     costs           = _calc_costs(prompt_tokens, completion_tokens, input_price, output_price)
 
-    truncated_msg   = (user_message or "")[:500].strip() or "(empty)"
+    stored_msg = (user_message or "").strip() or "(empty)"
     meta_json       = json.dumps(meta or {})
 
     # Não gravar se não há tokens reais e a fonte é estimativa do router
@@ -122,7 +122,7 @@ async def record_turn_usage(
                     """,
                     turn_id,
                     app_id, chat_session_id, user_id, user_name, user_email,
-                    company_id, company_name, conversation_id, truncated_msg,
+                    company_id, company_name, conversation_id, stored_msg,
                     model_id, prompt_tokens, completion_tokens, total_tokens,
                     input_price, output_price,
                     costs["input_cost_usd"], costs["output_cost_usd"], total_cost,

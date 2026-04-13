@@ -109,7 +109,7 @@ Todos os requests a `/v1/*` devem incluir:
 | `X-Turn-Id` | UUID v4 | Gerado pelo agente no início de cada turno |
 | `X-Session-Id` | string | ID da sessão de chat |
 | `X-Conversation-Id` | string ou `"null"` | ID da conversa. **`generate-title`** = geração de título (modelo fixo, sem router). |
-| `X-User-Message` | string | Primeiros 300 chars da mensagem do utilizador |
+| `X-User-Message` | string | Texto da mensagem do utilizador (completo; percent-encoding recomendado) |
 | `X-User-Id` | string ou `"null"` | ID do utilizador |
 | `X-User-Name` | string ou `"null"` | Nome do utilizador |
 | `X-User-Email` | string ou `"null"` | Email do utilizador |
