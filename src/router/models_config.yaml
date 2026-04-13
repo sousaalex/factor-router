@@ -207,6 +207,25 @@ models:
       Long context needs >262K. Multi-entity orchestration requiring 2-8 tools.
       Deep conditional workflows with 5+ tools.
 
+  - id: "openai/gpt-4.1-mini"
+    tier: "reasoning"
+    task_type: "reasoning"
+    tool_calls: "1-5"
+    context_window: 1047576
+    pricing:
+      input_per_1m_tokens:  "$0.40"
+      output_per_1m_tokens: "$1.60"
+    description: >
+      GPT-4.1 Mini by OpenAI. Mid-sized model with strong tool use, coding and
+      instruction-following quality at low latency/cost. 1M context.
+    best_for:
+      - "Tool-driven flows with predictable latency and low cost"
+      - "Interactive coding and structured outputs with 1-5 tool calls"
+      - "Large-context requests up to ~1M tokens"
+    not_for: >
+      Heavy multi-entity orchestration requiring 2-8 tool calls or deeper
+      branching logic; escalate to reasoning+ when required.
+
   # ===========================================================================
   # TIER: reasoning+  │ tool_calls: 2–8  │ Cost: $0.50–$2.20 output/M
   # Multi-entity, Many2one, conditional logic, long-context agentic flows

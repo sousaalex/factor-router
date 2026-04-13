@@ -35,7 +35,7 @@ Main gateway endpoint. Accepts the same body the OpenAI SDK sends.
 
 **The `model` field in the body is ignored** for normal chat — the gateway uses an internal
 router to pick the model. Exception: when **`X-Conversation-Id` is exactly `generate-title`**
-(title generation), the gateway skips the router and uses **`google/gemini-2.5-flash-lite`**
+(title generation), the gateway skips the router and uses **`openai/gpt-4.1-nano`**
 (same `POST /v1/chat/completions`; usage is tracked under a separate bucket from the chat turn).
 
 Supports `stream: true` (SSE) and `stream: false` (full JSON).

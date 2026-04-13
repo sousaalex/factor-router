@@ -623,9 +623,23 @@ async def handle_chat_completions(
         "stream_options": {"include_usage": True},   # tokens reais no chunk final (OpenRouter)
         "messages": messages,                        # passa as mensagens corrigidas
     }
+    # Regra explícita: quando o agente exigir tool_choice=required,
+    # roteamos imediatamente para GPT-4.1 Mini.
+    tool_choice = upstream_body.get("tool_choice")
+    if tool_choice == "required" and not is_title:
+        forced_model = "openai/gpt-4.1-mini"
+        if model_id != forced_model:
+            logger.info(
+                "[Proxy] tool_choice=required detectado; a forçar modelo %s (antes=%s).",
+                forced_model,
+                model_id,
+            )
+            model_id = forced_model
+            upstream_body["model"] = model_id
+            await accumulator.set_bucket_model_id(bid, model_id)
+
     # FIX: Alguns modelos do catálogo rejeitam tool_choice=required ou tool_choice como object.
     # Se isso acontecer, preferimos um fallback compatível do próprio catálogo.
-    tool_choice = upstream_body.get("tool_choice")
     model_l = str(model_id).lower()
     has_image_input = any(
         isinstance(part, dict) and (
