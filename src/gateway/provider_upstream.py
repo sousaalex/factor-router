@@ -25,9 +25,27 @@ class UpstreamTarget:
     api_model: str
     headers: dict[str, str]
     omit_stream_options: bool = False
+    selected_env: str = ""
+    api_key_source: str = ""
 
 
-def resolve_upstream(model_id: str, settings: "Settings") -> UpstreamTarget:
+def _resolve_openrouter_api_key(
+    settings: "Settings",
+    preferred_env: str | None = None,
+) -> tuple[str, str, str]:
+    env = (preferred_env or "").strip().lower()
+    if env == "dev":
+        return (settings.openrouter_api_dev or "").strip(), "dev", "OPENROUTER_API_DEV"
+    if env == "prod":
+        return (settings.openrouter_api_prod or "").strip(), "prod", "OPENROUTER_API_PROD"
+    return "", env, ""
+
+
+def resolve_upstream(
+    model_id: str,
+    settings: "Settings",
+    preferred_env: str | None = None,
+) -> UpstreamTarget:
     mid = (model_id or "").strip()
     if not mid:
         raise HTTPException(
@@ -81,11 +99,39 @@ def resolve_upstream(model_id: str, settings: "Settings") -> UpstreamTarget:
         mid = rest
 
     ur = settings.upstream_url.strip().rstrip("/")
+    api_key, env, api_key_source = _resolve_openrouter_api_key(
+        settings,
+        preferred_env=preferred_env,
+    )
+    if env not in {"dev", "prod"}:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "upstream_env_not_mapped",
+                "message": (
+                    "API key sem ambiente mapeado (permitidos: dev|prod). "
+                    "Contacte o administrador do FactorRouter para corrigir a configuração da key."
+                ),
+            },
+        )
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "error": "openrouter_api_key_not_configured",
+                "message": (
+                    "Nenhuma key OpenRouter disponível para este ambiente. "
+                    "Configure OPENROUTER_API_DEV para dev ou OPENROUTER_API_PROD para prod."
+                ),
+            },
+        )
     return UpstreamTarget(
         chat_completions_url=f"{ur}/chat/completions",
         api_model=mid,
-        headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
+        headers={"Authorization": f"Bearer {api_key}"},
         omit_stream_options=False,
+        selected_env=env,
+        api_key_source=api_key_source,
     )
 
 

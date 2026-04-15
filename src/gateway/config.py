@@ -40,7 +40,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Optional
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -53,9 +53,17 @@ class Settings(BaseSettings):
     )
 
     # ── upstream provider ─────────────────────────────────────────────────
-    openrouter_api_key: str = Field(
-        ...,
-        description="Key do OpenRouter — nunca sai do gateway",
+    openrouter_api_key: Optional[str] = Field(
+        default=None,
+        description="Legado (não usado na seleção estrita dev/prod).",
+    )
+    openrouter_api_prod: Optional[str] = Field(
+        default=None,
+        description="Key OpenRouter para tráfego de produção.",
+    )
+    openrouter_api_dev: Optional[str] = Field(
+        default=None,
+        description="Key OpenRouter para tráfego de desenvolvimento.",
     )
     upstream_url: str = Field(
         default="https://openrouter.ai/api/v1",
@@ -184,6 +192,14 @@ class Settings(BaseSettings):
     host: str  = Field(default="0.0.0.0")
     port: int  = Field(default=8003)
     log_level: str = Field(default="info")
+
+    @model_validator(mode="after")
+    def _validate_openrouter_keys(self) -> "Settings":
+        if not (self.openrouter_api_prod or self.openrouter_api_dev):
+            raise ValueError(
+                "Configure pelo menos uma destas variáveis: OPENROUTER_API_PROD, OPENROUTER_API_DEV."
+            )
+        return self
 
 
 @lru_cache(maxsize=1)

@@ -156,6 +156,22 @@ def _extract_usage_from_response(response_data: dict) -> tuple[int, int, int]:
     return prompt_tokens, completion_tokens, tool_calls_count
 
 
+def _classify_upstream_error(status_code: int, upstream_text: str) -> str:
+    """
+    Classifica erros do provider para códigos estáveis no cliente.
+    """
+    text_l = (upstream_text or "").lower()
+    if status_code in {401, 403}:
+        return "upstream_auth_failed"
+    if status_code == 402:
+        return "upstream_budget_exhausted"
+    if status_code == 429:
+        if any(k in text_l for k in ("credit", "credits", "quota", "balance", "insufficient")):
+            return "upstream_budget_exhausted"
+        return "upstream_rate_limited"
+    return "upstream_error"
+
+
 
 
 
@@ -228,6 +244,7 @@ async def _proxy_stream(
     ctx: GatewayContext,
     settings: Settings,
     upstream_target: UpstreamTarget,
+    upstream_env: str,
 ) -> StreamingResponse:
     """
     Faz proxy de um request com stream=True.
@@ -261,13 +278,32 @@ async def _proxy_stream(
 
                     if upstream.status_code >= 400:
                         error_body = await upstream.aread()
-                        # print(
-                        #     "Upstream error %d for turn [%s]: %s",
-                        #     upstream.status_code,
-                        #     ctx.turn_id[:8],
-                        #     error_body[:200],
-                        # )
-                        yield error_body
+                        raw_error_text = error_body.decode("utf-8", errors="replace").strip()
+                        error_code = _classify_upstream_error(
+                            upstream.status_code,
+                            raw_error_text,
+                        )
+                        print(
+                            "[ProxyUpstreamError] app_id=%s env=%s source=%s status=%s body=%s"
+                            % (
+                                ctx.app_id,
+                                upstream_env,
+                                upstream_target.api_key_source or "unknown",
+                                upstream.status_code,
+                                error_body[:300],
+                            )
+                        )
+                        # Em streaming (SSE), não conseguimos mudar o status HTTP depois de abrir 200.
+                        # Enviamos um evento de erro explícito e terminamos o stream.
+                        payload = {
+                            "error": error_code,
+                            "upstream_status": upstream.status_code,
+                            "upstream_env": upstream_env,
+                            "api_key_source": upstream_target.api_key_source or "unknown",
+                            "message": "Upstream provider returned an error.",
+                            "upstream_body": raw_error_text[:500],
+                        }
+                        yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n".encode("utf-8")
                         # NOTA: não fazemos flush em erro — o turno pode continuar após erro transitório
                         # O TTL cleanup ou /turns/{turn_id}/end irá gravar os tokens quando apropriado
                         return
@@ -339,6 +375,7 @@ async def _proxy_stream(
         headers={
             "Cache-Control":     "no-cache",
             "X-Accel-Buffering": "no",
+            "X-Factor-Upstream-Env": upstream_env,
         },
     )
 
@@ -362,6 +399,7 @@ async def _proxy_json(
     ctx: GatewayContext,
     settings: Settings,
     upstream_target: UpstreamTarget,
+    upstream_env: str,
 ) -> JSONResponse:
     """
     Faz proxy de um request com stream=False.
@@ -402,6 +440,18 @@ async def _proxy_json(
             pass
 
     if upstream.status_code >= 400:
+        raw_error_text = upstream.text
+        error_code = _classify_upstream_error(upstream.status_code, raw_error_text)
+        print(
+            "[ProxyUpstreamError] app_id=%s env=%s source=%s status=%s body=%s"
+            % (
+                ctx.app_id,
+                upstream_env,
+                upstream_target.api_key_source or "unknown",
+                upstream.status_code,
+                raw_error_text[:300],
+            )
+        )
         # print(
         #     "Upstream error %d for turn [%s]",
         #     upstream.status_code,
@@ -409,9 +459,22 @@ async def _proxy_json(
         # )
         # NOTA: não fazemos flush em erro — o turno pode continuar após erro transitório
         # O TTL cleanup ou /turns/{turn_id}/end irá gravar os tokens quando apropriado
+        try:
+            payload = upstream.json()
+        except Exception:
+            payload = {"message": raw_error_text}
+        if isinstance(payload, dict):
+            payload.setdefault("factor_error", error_code)
+            payload.setdefault("factor_upstream_status", upstream.status_code)
+            payload.setdefault("factor_upstream_env", upstream_env)
+            payload.setdefault(
+                "factor_api_key_source",
+                upstream_target.api_key_source or "unknown",
+            )
         return JSONResponse(
             status_code=upstream.status_code,
-            content=upstream.json(),
+            content=payload,
+            headers={"X-Factor-Upstream-Env": upstream_env},
         )
 
     response_data = upstream.json()
@@ -429,7 +492,10 @@ async def _proxy_json(
     #   1. POST /v1/turns/{turn_id}/end (explícito, recomendado para MemGPT)
     #   2. TTL cleanup (fallback de segurança — 15s de inatividade)
 
-    return JSONResponse(content=response_data)
+    return JSONResponse(
+        content=response_data,
+        headers={"X-Factor-Upstream-Env": upstream_env},
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -671,7 +737,7 @@ async def handle_chat_completions(
     if ("alibaba" in model_l or "qwen" in model_l) and (
         tool_choice == "required" or isinstance(tool_choice, dict)
     ):
-        fallback_model = "moonshotai/kimi-k2.5" if has_image_input else "qwen/qwen3.5-397b-a17b"
+        fallback_model = "moonshotai/kimi-k2.5" if has_image_input else "qwen/qwen3.6-plus"
         logger.warning(
             "[Proxy] tool_choice=%r incompatível com model=%s; "
             "a usar fallback compatível %s.",
@@ -683,13 +749,45 @@ async def handle_chat_completions(
         upstream_body["model"] = model_id
         await accumulator.set_bucket_model_id(bid, model_id)
 
-    upstream_target = resolve_upstream(model_id, settings)
+    upstream_target = resolve_upstream(
+        model_id,
+        settings,
+        preferred_env=ctx.upstream_env,
+    )
+    logger.info(
+        "[Proxy] app_id=%s model=%s upstream_env=%s api_key_source=%s",
+        ctx.app_id,
+        model_id,
+        upstream_target.selected_env or "unmapped",
+        upstream_target.api_key_source or "unknown",
+    )
+    print(
+        "[ProxyRoute] app_id=%s model=%s upstream_env=%s api_key_source=%s"
+        % (
+            ctx.app_id,
+            model_id,
+            upstream_target.selected_env or "unmapped",
+            upstream_target.api_key_source or "unknown",
+        )
+    )
 
     # ── 4. Proxy ─────────────────────────────────────────────────────────────
     if is_stream:
-        return await _proxy_stream(upstream_body, ctx, settings, upstream_target)
+        return await _proxy_stream(
+            upstream_body,
+            ctx,
+            settings,
+            upstream_target,
+            upstream_target.selected_env or "unmapped",
+        )
     else:
-        return await _proxy_json(upstream_body, ctx, settings, upstream_target)
+        return await _proxy_json(
+            upstream_body,
+            ctx,
+            settings,
+            upstream_target,
+            upstream_target.selected_env or "unmapped",
+        )
 
 
 async def handle_audio_transcriptions(

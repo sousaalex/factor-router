@@ -16,14 +16,15 @@ Endpoints:
     POST   /admin/apps                     — cria nova app
     GET    /admin/apps                     — lista todas as apps
     PATCH  /admin/apps/{app_id}            — teto USD / is_active
-    POST   /admin/apps/{app_id}/keys       — gera nova API Key
+    POST   /admin/apps/{app_id}/keys       — gera nova API Key (label herdado da app)
+    PATCH  /admin/apps/{app_id}/keys/{id}  — deprecated (ambiente agora é da app)
     GET    /admin/apps/{app_id}/keys       — lista keys da app
     DELETE /admin/apps/{app_id}/keys/{id}  — revoga uma key
 """
 from __future__ import annotations
 
 import logging
-from typing import Annotated, Optional
+from typing import Annotated, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Path, status
 from pydantic import BaseModel, Field
@@ -43,6 +44,13 @@ router = APIRouter(tags=["admin"])
 class CreateAppRequest(BaseModel):
     name:        str           = Field(..., min_length=2, max_length=100,
                                        description="Nome legível: 'Severino WhatsApp'")
+    environment: Literal["dev", "prod"] = Field(
+        default="dev",
+        description=(
+            "Ambiente comercial da app. Default: dev. "
+            "As API keys desta app herdam este valor."
+        ),
+    )
     description: Optional[str] = Field(default=None, max_length=500)
     spend_cap_usd: float = Field(
         10.0,
@@ -64,15 +72,27 @@ class PatchAppRequest(BaseModel):
         default=None,
         description="Se definido, activa ou desactiva a app.",
     )
+    environment: Optional[Literal["dev", "prod"]] = Field(
+        default=None,
+        description="Se definido, altera o ambiente da app e sincroniza as keys para esse ambiente.",
+    )
 
 
 class CreateKeyRequest(BaseModel):
-    label: Optional[str] = Field(
+    name: Optional[str] = Field(
         default=None,
         max_length=100,
-        description="E.g. 'production', 'staging', 'v2'",
+        description=(
+            "Nome opcional da key (ex.: WhatsApp produção). "
+            "O ambiente continua herdado da app."
+        ),
     )
 
+class PatchKeyRequest(BaseModel):
+    label: Literal["dev", "prod"] = Field(
+        ...,
+        description="Novo ambiente da key: dev ou prod.",
+    )
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Endpoints
@@ -87,6 +107,7 @@ Register a new app on the gateway. After creating the app, use
 `POST /admin/apps/{app_id}/keys` to generate the first API key.
 
 `app_id` is derived from `name` (lowercase, hyphenated) and must be unique (e.g. `my-app-v2`).
+`environment` defaults to `dev` and all keys of this app inherit it.
     """,
 )
 async def create_app(
@@ -97,6 +118,7 @@ async def create_app(
     try:
         return await store.create_app(
             name=body.name,
+            environment=body.environment,
             description=body.description,
             spend_cap_usd=body.spend_cap_usd,
         )
@@ -157,12 +179,12 @@ async def patch_app(
     _admin: Annotated[Auth0AdminUser, Depends(require_auth0_admin)],
     store: Annotated[KeyStore, Depends(get_key_store)],
 ):
-    if body.spend_cap_usd is None and body.is_active is None:
+    if body.spend_cap_usd is None and body.is_active is None and body.environment is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
                 "error": "empty_patch",
-                "message": "Provide at least one of: spend_cap_usd, is_active.",
+                "message": "Provide at least one of: spend_cap_usd, is_active, environment.",
             },
         )
     try:
@@ -170,6 +192,7 @@ async def patch_app(
             app_id,
             spend_cap_usd=body.spend_cap_usd,
             is_active=body.is_active,
+            environment=body.environment,
         )
     except ValueError as e:
         raise HTTPException(
@@ -190,6 +213,8 @@ async def patch_app(
     summary="Generate a new API key",
     description="""
 Generates a new API key for the app.
+The key environment (`label`) is inherited from the app (`gateway_apps.environment`).
+Pode incluir `name` opcional para identificação humana da key.
 
 **IMPORTANT:** The raw key is returned **ONLY ONCE** in this response.
 Store it securely immediately (e.g. in the app's environment variables).
@@ -207,7 +232,7 @@ async def create_key(
     try:
         return await store.create_key(
             app_id=app_id,
-            label=body.label,
+            label=body.name,
         )
     except ValueError as e:
         raise HTTPException(
@@ -223,6 +248,33 @@ async def create_key(
                 "message": "Internal server error.",
             },
         )
+
+
+@router.patch(
+    "/apps/{app_id}/keys/{key_id}",
+    summary="Deprecated: key environment is app-level",
+    description="""
+O ambiente agora é definido ao nível da app e herdado por todas as keys.
+Use `PATCH /admin/apps/{app_id}` com `environment=dev|prod`.
+    """,
+)
+async def patch_key(
+    app_id: Annotated[str, Path()],
+    key_id: Annotated[str, Path()],
+    body: PatchKeyRequest,
+    _admin: Annotated[Auth0AdminUser, Depends(require_auth0_admin)],
+    store: Annotated[KeyStore, Depends(get_key_store)],
+):
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "error": "key_environment_is_app_level",
+            "message": (
+                "Environment is managed at app level. "
+                "Use PATCH /admin/apps/{app_id} with environment=dev|prod."
+            ),
+        },
+    )
 
 
 @router.get(

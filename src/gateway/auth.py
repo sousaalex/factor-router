@@ -20,10 +20,34 @@ bearer_scheme = gateway_api_key_bearer
 class AuthenticatedApp:
     """Resultado de uma autenticação bem-sucedida."""
 
-    def __init__(self, app_id: str, app_name: str, key_id: str) -> None:
+    def __init__(
+        self,
+        app_id: str,
+        app_name: str,
+        key_id: str,
+        key_label: str | None = None,
+    ) -> None:
         self.app_id   = app_id
         self.app_name = app_name
         self.key_id   = key_id
+        self.key_label = key_label
+
+    @property
+    def upstream_env(self) -> str | None:
+        """
+        Ambiente lógico do upstream inferido a partir do label da API key.
+        Convenção estrita:
+          - dev  -> "dev"
+          - prod -> "prod"
+        """
+        label = (self.key_label or "").strip().lower()
+        if ":" in label:
+            label = label.split(":", 1)[0].strip()
+        if label == "dev":
+            return "dev"
+        if label == "prod":
+            return "prod"
+        return None
 
     def __repr__(self) -> str:
         return f"AuthenticatedApp(app_id={self.app_id!r}, name={self.app_name!r})"
@@ -75,4 +99,5 @@ async def authenticate(
         app_id=entry.app_id,
         app_name=entry.app_name,
         key_id=entry.key_id,
+        key_label=entry.label,
     )
