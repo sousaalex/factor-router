@@ -123,6 +123,7 @@ class GatewayContext:
         company_name: str | None,
     ) -> None:
         self.app_id          = None   # preenchido pelo proxy.py a partir do auth
+        self.upstream_env    = None   # preenchido pelo proxy.py com base no label da API key
         self.turn_id         = turn_id
         self.session_id      = session_id
         self.conversation_id = conversation_id

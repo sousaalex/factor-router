@@ -56,6 +56,7 @@ async def chat_completions(
     """
     # Injeta o app_id da API Key no contexto
     ctx.app_id = auth.app_id
+    ctx.upstream_env = auth.upstream_env
 
     from src.gateway.config import get_settings
     from src.gateway.proxy import handle_chat_completions
@@ -80,6 +81,7 @@ async def audio_transcriptions(
 ):
     # Injeta o app_id da API Key no contexto
     ctx.app_id = auth.app_id
+    ctx.upstream_env = auth.upstream_env
 
     from src.gateway.config import get_settings
     from src.gateway.proxy import handle_audio_transcriptions

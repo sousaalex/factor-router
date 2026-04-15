@@ -101,6 +101,7 @@ class CachedKey:
     key_id:    str   # UUID da linha em gateway_api_keys
     app_name:  str
     is_active: bool
+    label: Optional[str] = None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -188,6 +189,7 @@ class KeyStore:
     async def create_app(
         self,
         name: str,
+        environment: str = "dev",
         description: str | None = None,
         spend_cap_usd: float = 10.0,
     ) -> dict:
@@ -200,15 +202,18 @@ class KeyStore:
         """
         import re as _re
         app_id = _re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
+        env = (environment or "dev").strip().lower()
+        if env not in {"dev", "prod"}:
+            raise ValueError("Invalid app environment. Allowed values: dev, prod.")
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
-                INSERT INTO gateway_apps (app_id, name, description, spend_cap_usd)
-                VALUES ($1, $2, $3, $4)
-                RETURNING id, app_id, name, description, is_active, created_at,
+                INSERT INTO gateway_apps (app_id, name, environment, description, spend_cap_usd)
+                VALUES ($1, $2, $3, $4, $5)
+                RETURNING id, app_id, name, environment, description, is_active, created_at,
                           spend_cap_usd, spent_usd_total
                 """,
-                app_id, name, description, spend_cap_usd,
+                app_id, name, env, description, spend_cap_usd,
             )
         logger.info("App created: app_id=%s name=%s spend_cap_usd=%s", app_id, name, spend_cap_usd)
         return _serialize_app_row(dict(row))
@@ -245,11 +250,12 @@ class KeyStore:
         *,
         spend_cap_usd: float | None = None,
         is_active: bool | None = None,
+        environment: str | None = None,
     ) -> Optional[dict]:
         """
         Actualiza teto de gasto e/ou is_active. Devolve a app actualizada ou None.
         """
-        if spend_cap_usd is None and is_active is None:
+        if spend_cap_usd is None and is_active is None and environment is None:
             raise ValueError("Nothing to update.")
         sets: list[str] = []
         args: list = []
@@ -262,16 +268,32 @@ class KeyStore:
             sets.append(f"is_active = ${idx}")
             args.append(is_active)
             idx += 1
+        if environment is not None:
+            env = (environment or "").strip().lower()
+            if env not in {"dev", "prod"}:
+                raise ValueError("Invalid app environment. Allowed values: dev, prod.")
+            sets.append(f"environment = ${idx}")
+            args.append(env)
+            idx += 1
         args.append(app_id)
         q = f"""
             UPDATE gateway_apps
             SET {", ".join(sets)}
             WHERE app_id = ${idx}
-            RETURNING id, app_id, name, description, is_active, created_at,
+            RETURNING id, app_id, name, environment, description, is_active, created_at,
                       spend_cap_usd, spent_usd_total
         """
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(q, *args)
+            if row is not None and environment is not None:
+                await conn.execute(
+                    """
+                    UPDATE gateway_api_keys
+                    SET label = $1
+                    WHERE app_id = $2
+                    """,
+                    env, app_id,
+                )
         if row is None:
             return None
         out = _serialize_app_row(dict(row))
@@ -302,13 +324,22 @@ class KeyStore:
         # Verifica que a app existe e está ativa
         async with self._pool.acquire() as conn:
             app = await conn.fetchrow(
-                "SELECT app_id, name, is_active FROM gateway_apps WHERE app_id = $1",
+                "SELECT app_id, name, environment, is_active FROM gateway_apps WHERE app_id = $1",
                 app_id,
             )
             if not app:
                 raise ValueError(f"App '{app_id}' not found.")
             if not app["is_active"]:
                 raise ValueError(f"App '{app_id}' is disabled.")
+            app_env = str(app["environment"]).strip().lower()
+            if app_env not in {"dev", "prod"}:
+                raise ValueError(
+                    f"App '{app_id}' has invalid environment '{app_env}'. Contact FactorRouter admin."
+                )
+            display_name = (label or "").strip()
+            if ":" in display_name:
+                raise ValueError("Key name cannot contain ':'.")
+            stored_label = app_env if not display_name else f"{app_env}:{display_name}"
 
             # Gera key, hash e prefix
             api_key, key_hash, key_prefix = generate_api_key(app_id)
@@ -320,7 +351,7 @@ class KeyStore:
                 VALUES ($1, $2, $3, $4)
                 RETURNING id, app_id, key_prefix, label, is_active, created_at
                 """,
-                app_id, key_hash, key_prefix, label,
+                app_id, key_hash, key_prefix, stored_label,
             )
 
         # Atualiza cache imediatamente (sem esperar pelo TTL)
@@ -330,6 +361,7 @@ class KeyStore:
                 key_id=str(row["id"]),
                 app_name=app["name"],
                 is_active=True,
+                label=row["label"],
             )
 
         logger.info(
@@ -342,7 +374,7 @@ class KeyStore:
             "key_id":     str(row["id"]),
             "key_prefix": key_prefix,
             "app_id":     app_id,
-            "label":      label,
+            "label":      stored_label,
             "created_at": row["created_at"].isoformat(),
             "warning":    "Store this key securely — it will not be shown again.",
         }
@@ -386,19 +418,44 @@ class KeyStore:
             "revoked_at": row["revoked_at"].isoformat(),
         }
 
+    async def patch_key_label(self, app_id: str, key_id: str, label: str) -> dict:
+        """
+        Atualiza o label (ambiente) de uma key existente.
+        Label suportado: dev | prod.
+        """
+        label_norm = (label or "").strip().lower()
+        if label_norm not in {"dev", "prod"}:
+            raise ValueError("Invalid key label. Allowed values: dev, prod.")
+
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                UPDATE gateway_api_keys
+                SET label = $1
+                WHERE id = $2 AND app_id = $3
+                RETURNING id, app_id, key_prefix, label, is_active, created_at, revoked_at, last_used_at
+                """,
+                label_norm, key_id, app_id,
+            )
+            if not row:
+                raise ValueError(f"Key '{key_id}' not found for app '{app_id}'.")
+
+        await self._reload_cache()
+        return dict(row)
+
     async def list_apps(self) -> list[dict]:
         """Lista todas as apps com contagem de keys ativas."""
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
                 """
                 SELECT
-                    a.id, a.app_id, a.name, a.description,
+                    a.id, a.app_id, a.name, a.environment, a.description,
                     a.is_active, a.created_at,
                     a.spend_cap_usd, a.spent_usd_total,
                     COUNT(k.id) FILTER (WHERE k.is_active) AS active_keys
                 FROM gateway_apps a
                 LEFT JOIN gateway_api_keys k ON k.app_id = a.app_id
-                GROUP BY a.id, a.app_id, a.name, a.description,
+                GROUP BY a.id, a.app_id, a.name, a.environment, a.description,
                          a.is_active, a.created_at,
                          a.spend_cap_usd, a.spent_usd_total
                 ORDER BY a.created_at DESC
@@ -437,7 +494,7 @@ class KeyStore:
             async with self._pool.acquire() as conn:
                 rows = await conn.fetch(
                     """
-                    SELECT k.key_hash, k.id, k.app_id, k.is_active, a.name
+                    SELECT k.key_hash, k.id, k.app_id, k.is_active, k.label, a.name
                     FROM gateway_api_keys k
                     JOIN gateway_apps a ON a.app_id = k.app_id
                     WHERE k.is_active = TRUE AND a.is_active = TRUE
@@ -450,6 +507,7 @@ class KeyStore:
                     key_id=str(row["id"]),
                     app_name=row["name"],
                     is_active=row["is_active"],
+                    label=row["label"],
                 )
                 for row in rows
             }
