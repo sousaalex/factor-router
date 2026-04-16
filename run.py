@@ -15,15 +15,17 @@ from dotenv import load_dotenv
 env_selector = os.getenv("ENVIRONMENT", "dev").strip().lower()
 env_file = f".env.{env_selector}"
 
-if not Path(env_file).exists():
-    raise FileNotFoundError(
-        f"Environment file '{env_file}' not found. "
-        f"Set ENVIRONMENT=dev or ENVIRONMENT=prod, or create the file."
+env_path = Path(env_file)
+if env_path.exists():
+    # Local execution convenience (e.g. `ENVIRONMENT=dev python run.py`)
+    load_dotenv(env_path)
+    print(f"✅ Loaded environment file: {env_path}")
+else:
+    # In Docker, `env_file:` injects vars but does not mount the file into the container.
+    print(
+        f"ℹ️ Environment file not found: {env_path} "
+        "(continuing with process environment variables)"
     )
-
-# Load environment variables from selected .env file
-load_dotenv(env_file)
-print(f"✅ Loaded environment: {env_file}")
 PORT = int(os.getenv("PORT", 8003))
 HOST = os.getenv("HOST", "0.0.0.0")
 if __name__ == "__main__":
@@ -31,5 +33,5 @@ if __name__ == "__main__":
         "src.api.app:app",
         host=HOST,
         port=PORT,
-        reload=True,  # Hot reload during development
+        reload=(env_selector == "dev"),
     )
