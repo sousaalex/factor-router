@@ -15,22 +15,13 @@
 -- Para tornar o script re-executável, removemos o tipo apenas quando a tabela não existe.
 DO $$
 BEGIN
-  IF EXISTS (
-       SELECT 1
-         FROM pg_type t
-         JOIN pg_namespace n ON n.oid = t.typnamespace
-        WHERE t.typname = 'gateway_apps'
-          AND n.nspname = 'public'
-     )
+  IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'gateway_apps')
      AND NOT EXISTS (
-       SELECT 1
-         FROM pg_class c
-         JOIN pg_namespace n ON n.oid = c.relnamespace
-        WHERE c.relname = 'gateway_apps'
-          AND c.relkind = 'r'
-          AND n.nspname = 'public'
+       SELECT 1 FROM pg_class
+        WHERE relname = 'gateway_apps'
+          AND relkind = 'r'
      ) THEN
-    EXECUTE 'DROP TYPE public.gateway_apps';
+    EXECUTE 'DROP TYPE gateway_apps';
   END IF;
 END $$;
 
@@ -55,28 +46,6 @@ CREATE INDEX IF NOT EXISTS idx_gateway_apps_is_active
 -- A key real nunca é guardada — apenas o SHA-256 hex digest.
 -- Uma app pode ter múltiplas keys (rotação sem downtime).
 -- ─────────────────────────────────────────────────────────────────────────────
--- Nota: pode acontecer também ficar um type `gateway_api_keys` sem a tabela
--- se uma execução anterior falhou.
-DO $$
-BEGIN
-  IF EXISTS (
-       SELECT 1
-         FROM pg_type t
-         JOIN pg_namespace n ON n.oid = t.typnamespace
-        WHERE t.typname = 'gateway_api_keys'
-          AND n.nspname = 'public'
-     )
-     AND NOT EXISTS (
-       SELECT 1
-         FROM pg_class c
-         JOIN pg_namespace n ON n.oid = c.relnamespace
-        WHERE c.relname = 'gateway_api_keys'
-          AND c.relkind = 'r'
-          AND n.nspname = 'public'
-     ) THEN
-    EXECUTE 'DROP TYPE public.gateway_api_keys';
-  END IF;
-END $$;
 
 CREATE TABLE IF NOT EXISTS gateway_api_keys (
     id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
