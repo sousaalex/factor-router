@@ -37,20 +37,49 @@ Variáveis opcionais (têm default):
 """
 from __future__ import annotations
 
+import os
 from functools import lru_cache
+from pathlib import Path
 from typing import Optional
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def _resolve_env_file() -> str | None:
+    """
+    Resolve automaticamente o ficheiro .env a carregar em desenvolvimento local.
+
+    - Se existir .env.dev/.env.prod, usa conforme ENVIRONMENT (ou ENVOROMENT).
+    - Se não existir (ex.: Docker), não força env_file e usa só variáveis do ambiente.
+    """
+    selector = (
+        os.getenv("ENVIRONMENT")
+        or os.getenv("ENVOROMENT")  # typo comum no dia a dia
+        or os.getenv("ENV")
+        or ""
+    ).strip().lower()
+
+    candidate = ".env"
+    if selector in {"dev", "prod"}:
+        candidate = f".env.{selector}"
+
+    return candidate if Path(candidate).exists() else None
+
+
+_ENV_FILE = _resolve_env_file()
+
+
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=False,
-        extra="ignore",
-    )
+    _cfg: dict = {
+        "env_file_encoding": "utf-8",
+        "case_sensitive": False,
+        "extra": "ignore",
+    }
+    if _ENV_FILE:
+        _cfg["env_file"] = _ENV_FILE
+
+    model_config = SettingsConfigDict(**_cfg)
 
     # ── upstream provider ─────────────────────────────────────────────────
     openrouter_api_key: Optional[str] = Field(

@@ -29,6 +29,8 @@ services:
     image: router-api:0.0.1
     container_name: router-api-dev
     restart: unless-stopped
+    environment:
+      - ENVIRONMENT=dev
     env_file:
       - .env.dev
     ports:

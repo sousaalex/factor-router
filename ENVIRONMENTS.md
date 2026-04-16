@@ -21,6 +21,7 @@ A API está separada em dois ambientes independentes: **Desenvolvimento** e **Pr
 - **Container names**: `router-db-dev`, `router-api-dev`
 - **Volume**: `router-db-data-dev`
 - **Network**: `factor_router_net_dev`
+- **ENVIRONMENT**: `dev` (variável que seleciona o .env correto)
 
 ### Produção (`.env.prod` + `docker-compose-prod.yml`)
 
@@ -30,6 +31,26 @@ A API está separada em dois ambientes independentes: **Desenvolvimento** e **Pr
 - **Container names**: `router-db-prod`, `router-api-prod`
 - **Volume**: `router-db-data-prod`
 - **Network**: `factor_router_net_prod`
+- **ENVIRONMENT**: `prod` (variável que seleciona o .env correto)
+
+### Como Funciona a Seleção de Ambiente
+
+O gateway usa a variável `ENVIRONMENT` para carregar automaticamente o ficheiro `.env` correto:
+
+- `ENVIRONMENT=dev` → carrega `.env.dev`
+- `ENVIRONMENT=prod` → carrega `.env.prod`
+
+**Localmente (desenvolvimento):**
+```bash
+# Dev
+ENVIRONMENT=dev python run.py
+
+# Prod
+ENVIRONMENT=prod python run.py
+```
+
+**Docker Compose:**
+A variável `ENVIRONMENT` já está definida nos ficheiros `docker-compose-*.yml`.
 
 ## Comandos
 

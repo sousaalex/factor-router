@@ -29,6 +29,8 @@ services:
     image: router-api:0.0.1
     container_name: router-api-prod
     restart: unless-stopped
+    environment:
+      - ENVIRONMENT=prod
     env_file:
       - .env.prod
     ports:
