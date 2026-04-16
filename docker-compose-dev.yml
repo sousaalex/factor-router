@@ -1,3 +1,5 @@
+name: llm_router_dev
+
 services:
 
   # ── Base de dados ──────────────────────────────────────────────────────────
