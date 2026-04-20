@@ -89,8 +89,10 @@ centro de custos centralizado.
 As tuas apps apontam para este gateway em vez do OpenRouter/OpenAI diretamente.
 O gateway decide o modelo, faz o proxy do stream, e regista o custo.
 
-Também expõe **`POST /v1/audio/transcriptions`** (transcrição / Factor Whisper upstream)
-e **`POST /v1/audio/speech`** (TTS / factor-speech upstream), ambos OpenAI-compatible.
+Também expõe **`POST /v1/audio/transcriptions`** (OpenAI-compatible) para
+proxy de transcrição de áudio via Factor Whisper upstream, e
+**`POST /v1/audio/speech`** (OpenAI-compatible) para geração de áudio
+(text-to-speech) via TTS upstream.
 
 ## Autenticação
 
