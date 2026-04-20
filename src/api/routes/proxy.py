@@ -86,3 +86,30 @@ async def audio_transcriptions(
     from src.gateway.config import get_settings
     from src.gateway.proxy import handle_audio_transcriptions
     return await handle_audio_transcriptions(request, ctx, get_settings())
+
+
+@router.post(
+    "/audio/speech",
+    summary="Audio speech / TTS (OpenAI-compatible)",
+    description="""
+Proxy para síntese de voz em formato OpenAI (`POST /v1/audio/speech`).
+
+Corpo JSON: `model`, `input`, opcional `voice`, `response_format` (ex.: `opus`).
+
+Requer `Authorization: Bearer <api_key>` e os mesmos headers `X-*` do chat
+para rastreio e centro de custos.
+""",
+    tags=["proxy"],
+)
+async def audio_speech(
+    request: Request,
+    auth: Annotated[AuthenticatedApp, Depends(authenticate)],
+    ctx: Annotated[GatewayContext, Depends(GatewayContext.from_headers)],
+):
+    ctx.app_id = auth.app_id
+    ctx.upstream_env = auth.upstream_env
+
+    from src.gateway.config import get_settings
+    from src.gateway.proxy import handle_audio_speech
+
+    return await handle_audio_speech(request, ctx, get_settings())

@@ -31,6 +31,8 @@ Variáveis opcionais (têm default):
     OLLAMA_BASE_URL  — opcional no gateway: base do Ollama (ex. http://localhost:11434) para modelos id ollama/…
     WHISPER_UPSTREAM_URL — endpoint de transcrição (Factor Whisper) para /v1/audio/transcriptions
     WHISPER_UPSTREAM_TIMEOUT — timeout em segundos para upload/transcrição de áudio
+    SPEECH_UPSTREAM_URL — endpoint TTS (factor-speech) para POST /v1/audio/speech
+    SPEECH_UPSTREAM_TIMEOUT — timeout em segundos para geração de áudio
     ACCUMULATOR_IDLE_TTL_SECONDS — inatividade máxima do balde (ver accumulator)
     OPENROUTER_MANAGEMENT_API_KEY (opcional), OPENROUTER_CREDITS_* , OPENROUTER_ROUTER_BUDGET_* — créditos / router económico
     GATEWAY_PREMIUM_MODEL + ALLOWLIST + FALLBACK — modelo premium só para alguns users; outros → Kimi (default)
@@ -125,6 +127,15 @@ class Settings(BaseSettings):
         default=180,
         ge=10,
         description="Timeout em segundos para requests de transcrição de áudio",
+    )
+    speech_upstream_url: str = Field(
+        default="http://127.0.0.1:8091/v1/audio/speech",
+        description="Upstream factor-speech (OpenAI-compatible) para POST /v1/audio/speech",
+    )
+    speech_upstream_timeout: int = Field(
+        default=180,
+        ge=10,
+        description="Timeout em segundos para requests de síntese de voz (TTS)",
     )
     openrouter_management_api_key: Optional[str] = Field(
         default=None,

@@ -26,7 +26,7 @@ from typing import AsyncIterator, TYPE_CHECKING
 
 import httpx
 from fastapi import HTTPException, Request, status
-from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
 
 from src.gateway.accumulator import get_accumulator
 from src.gateway.config import Settings
@@ -1073,3 +1073,130 @@ async def handle_audio_transcriptions(
         logger.warning("[AudioProxy] Falha ao registar usage turn=%s: %s", ctx.turn_id[:8], e)
 
     return response
+
+
+async def handle_audio_speech(
+    request: Request,
+    ctx: "GatewayContext",
+    settings: Settings,
+) -> Response | JSONResponse:
+    """
+    Proxy OpenAI-compatible para POST /v1/audio/speech (factor-speech / TTS).
+    Body JSON; mesmos headers X-* que o resto do gateway.
+    """
+    await _enforce_app_budget_or_raise(ctx)
+
+    content_type = request.headers.get("content-type", "")
+    if not content_type.startswith("application/json"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "invalid_content_type",
+                "message": f"Content-Type must be application/json, got: {content_type}",
+            },
+        )
+
+    try:
+        body_dict = await request.json()
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "invalid_json",
+                "message": f"Body must be valid JSON: {e}",
+            },
+        ) from e
+
+    if not isinstance(body_dict, dict):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": "invalid_body", "message": "JSON body must be an object."},
+        )
+
+    if "model" not in body_dict:
+        body_dict["model"] = "tts-1"
+
+    text_in = str(body_dict.get("input") or "")
+
+    try:
+        async with httpx.AsyncClient(timeout=settings.speech_upstream_timeout) as client:
+            upstream = await client.post(
+                settings.speech_upstream_url,
+                json=body_dict,
+                headers={"Content-Type": "application/json"},
+            )
+    except httpx.TimeoutException as e:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail={
+                "error": "upstream_timeout",
+                "message": (
+                    f"TTS upstream did not respond within "
+                    f"{settings.speech_upstream_timeout}s."
+                ),
+            },
+        ) from e
+    except httpx.HTTPError as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "error": "upstream_unreachable",
+                "message": f"Failed to reach TTS upstream: {e}",
+            },
+        ) from e
+
+    if upstream.status_code >= 400:
+        u_ct = upstream.headers.get("content-type", "")
+        if "application/json" in u_ct:
+            try:
+                payload = upstream.json()
+            except Exception:
+                payload = {"error": "upstream_error", "message": upstream.text}
+            return JSONResponse(status_code=upstream.status_code, content=payload)
+        return JSONResponse(
+            status_code=upstream.status_code,
+            content={"error": "upstream_error", "message": upstream.text},
+        )
+
+    out_ct = upstream.headers.get("content-type", "audio/ogg")
+    audio_size = len(upstream.content or b"")
+    model_id = f"tts/{body_dict.get('model') or 'tts-1'}"
+    prompt_tokens = max(1, len(text_in) // 4)
+    completion_tokens = max(0, audio_size // 32)
+    total_tokens = prompt_tokens + completion_tokens
+    meta: dict[str, object] = {
+        "source": "speech_upstream",
+        "speech_upstream_url": settings.speech_upstream_url,
+        "audio_size_bytes": audio_size,
+        "response_format": body_dict.get("response_format", "opus"),
+    }
+
+    try:
+        from src.usage.service import record_turn_usage
+
+        await record_turn_usage(
+            turn_id=ctx.accumulator_bucket_id,
+            app_id=ctx.app_id,
+            chat_session_id=ctx.session_id,
+            conversation_id=ctx.conversation_id,
+            user_message=ctx.user_message or "(tts)",
+            user_id=ctx.user_id,
+            user_name=ctx.user_name,
+            user_email=ctx.user_email,
+            company_id=ctx.company_id,
+            company_name=ctx.company_name,
+            model_id=model_id,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+            tool_calls_count=0,
+            meta=meta,
+        )
+    except Exception as e:
+        logger.warning("[SpeechProxy] usage record failed turn=%s: %s", ctx.turn_id[:8], e)
+
+    return Response(
+        content=upstream.content,
+        media_type=out_ct,
+        status_code=upstream.status_code,
+    )
