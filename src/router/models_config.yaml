@@ -126,31 +126,23 @@ models:
     pricing:
       input_per_1m_tokens: "$0.00"
       output_per_1m_tokens: "$0.00"
-    description: "Qwen3.6 35B (3B ativos) MoE - FactorAI vLLM local"
+    description: >
+      Qwen3.6 Plus by Qwen. Hybrid linear attention + sparse mixture-of-experts routing.
+      Compared to the 3.5 series, it brings major gains in agentic coding, front-end
+      development, and overall reasoning, with a significantly improved vibe-coding
+      experience. Strong on complex tasks such as 3D scenes, games, and repository-level
+      problem solving (SWE-bench Verified 78.8). 1,000,000 context. $0.325/$1.95 per
+      1M tokens.
     best_for:
-      - "Raciocínio complexo"
-      - "Code generation"
-      - "Tarefas gerais de baixo custo"
-    not_for: "Quando precisares de modelos frontier (Gemini, GPT-4)"
+      - "Reasoning-tier tasks with stronger coding output and robust cost control"
+      - "Agentic coding, front-end implementation, and repository-level problem solving"
+      - "Operational Agiweb turns that need higher capability than chat-tier models"
+    not_for: >
+      Long-horizon workflows with high ambiguity, deep conditional orchestration,
+      or broad cross-entity synthesis; escalate to 397B, Kimi, or complex tier as needed.
     provider: "factorai"
     is_local: true
 
-  - id: "factorai/qwen2.5:0.5b"
-    tier: "simple"
-    task_type: "simple"
-    tool_calls: "0-2"
-    context_window: 32768
-    pricing:
-      input_per_1m_tokens: "$0.00"
-      output_per_1m_tokens: "$0.00"
-    description: "Qwen2.5 0.5B - ultra-rápido para tarefas simples"
-    best_for:
-      - "Saudações"
-      - "Classificação simples"
-      - "Extração de entidades"
-    not_for: "Raciocínio complexo ou código"
-    provider: "factorai"
-    is_local: true
 
   - id: "qwen/qwen3.6-plus"
     tier: "reasoning"
