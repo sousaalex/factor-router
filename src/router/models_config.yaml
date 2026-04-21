@@ -168,24 +168,25 @@ models:
   #     Maximum reliability for complex ERP, deep ambiguity, or business synthesis (prefer qwen/qwen3.5-397b-a17b).
   #     Heavy Many2one, 2-8 tool chains, or autonomous visual coding pipelines (prefer Kimi).
 
-  - id: "qwen/qwen3.5-plus-02-15"
-    tier: "reasoning"
-    task_type: "reasoning"
-    tool_calls: "1-5"
-    context_window: 1000000
-    pricing:
-      input_per_1m_tokens:  "$0.26"
-      output_per_1m_tokens: "$1.56"
-    description: >
-      Qwen3.5 Plus with 1M token context. Hybrid architecture for efficient inference.
-      Strong on coding, long documents, and multimodal tasks within 1-5 tool calls.
-    best_for:
-      - "Coding tasks: refactor, debug, implement, tests"
-      - "Long context: >262K tokens, large documents, transcripts"
-      - "Vision + text: image/chart analysis within 1M context"
-      - "Multi-step linear ERP operations"
-    not_for: >
-      Simple greetings or single-entity lookups. Heavy multi-entity orchestration with 2-8 tools. Deep conditional workflows with 5+ tools.
+  # REMOVIDO: qwen/qwen3.5-plus-02-15 — tráfego migrado para qwen/qwen3.6-plus
+  # - id: "qwen/qwen3.5-plus-02-15"
+  #   tier: "reasoning"
+  #   task_type: "reasoning"
+  #   tool_calls: "1-5"
+  #   context_window: 1000000
+  #   pricing:
+  #     input_per_1m_tokens:  "$0.26"
+  #     output_per_1m_tokens: "$1.56"
+  #   description: >
+  #     Qwen3.5 Plus with 1M token context. Hybrid architecture for efficient inference.
+  #     Strong on coding, long documents, and multimodal tasks within 1-5 tool calls.
+  #   best_for:
+  #     - "Coding tasks: refactor, debug, implement, tests"
+  #     - "Long context: >262K tokens, large documents, transcripts"
+  #     - "Vision + text: image/chart analysis within 1M context"
+  #     - "Multi-step linear ERP operations"
+  #   not_for: >
+  #     Simple greetings or single-entity lookups. Heavy multi-entity orchestration with 2-8 tools. Deep conditional workflows with 5+ tools.
 
   - id: "qwen/qwen3.5-397b-a17b"
     tier: "reasoning"
@@ -226,32 +227,6 @@ models:
       Heavy multi-entity orchestration requiring 2-8 tool calls or deeper
       branching logic; escalate to reasoning+ when required.
 
-  # ===========================================================================
-  # TIER: reasoning+  │ tool_calls: 2–8  │ Cost: $0.50–$2.20 output/M
-  # Multi-entity, Many2one, conditional logic, long-context agentic flows
-  # ===========================================================================
-
-  # - id: "x-ai/grok-4.1-fast"
-  #   tier: "reasoning+"
-  #   task_type: "reasoning+"
-  #   tool_calls: "2-8"
-  #   context_window: 2000000
-  #   pricing:
-  #     input_per_1m_tokens:  "$0.20"
-  #     output_per_1m_tokens: "$0.50"
-  #   description: >
-  #     Grok 4.1 Fast by xAI. Strong agentic tool-calling model optimized for
-  #     long-context, tool-heavy flows. 2M context window at the lowest output cost
-  #     in this catalog. Use when reasoning+ quality is needed but budget is tight
-  #     or context is very large (100K+). $0.20/$0.50 per 1M tokens.
-  #   best_for:
-  #     - "High-context (100K+) agentic tasks with 2-8 tool calls under strict budget"
-  #     - "Customer support/investigation flows requiring durable long-context retention"
-  #     - "Research-style synthesis before escalating to complex-tier models"
-  #   not_for: >
-  #     Safety-critical workflows with deep conditional orchestration and high
-  #     cost-of-error (prefer complex tier), or trivial turns that reasoning tier can handle.
-
   - id: "moonshotai/kimi-k2.5"
     tier: "reasoning+"
     task_type: "reasoning+"
@@ -272,6 +247,31 @@ models:
       Simple queries or single-entity operations. Greetings and chat.
       Tasks with 1-5 linear tool calls.
 
+  - id: "moonshotai/kimi-k2.6"
+    tier: "reasoning+"
+    task_type: "reasoning+"
+    tool_calls: "2-8"
+    context_window: 262144
+    pricing:
+      input_per_1m_tokens:  "$0.60"
+      output_per_1m_tokens: "$2.80"
+    description: >
+      Kimi K2.6 by Moonshot AI. Next-generation multimodal model for long-horizon
+      coding, coding-driven UI/UX generation, and multi-agent orchestration.
+      Handles complex end-to-end coding tasks across Python, Rust, and Go.
+      Agent swarm architecture scales to hundreds of parallel sub-agents for
+      autonomous task decomposition. 262K context.
+    best_for:
+      - "Long-horizon coding tasks across multiple languages (Python, Rust, Go)"
+      - "Coding-driven UI/UX generation from prompts and visual inputs"
+      - "Multi-agent orchestration with autonomous task decomposition"
+      - "Complex end-to-end workflows requiring agent swarm architecture"
+      - "Production-ready interface generation from visual inputs"
+    not_for: >
+      Simple queries or single-entity operations. Greetings and chat.
+      Tasks with 1-5 linear tool calls. Budget-sensitive reasoning+ tasks
+      where K2.5 offers similar capability at lower cost.
+
   - id: "xiaomi/mimo-v2-omni"
     tier: "reasoning+"
     task_type: "reasoning+"
@@ -291,55 +291,6 @@ models:
     not_for: >
       Simple chat or single-entity operations that reasoning-tier models can
       solve at lower cost and latency.
-
-  # ===========================================================================
-  # TIER: complex  │ tool_calls: 5–12  │ Cost: $4.50 output/M
-  # Cascading creation, deep conditionals, multi-module reports, high-stakes
-  # ===========================================================================
-
-  # - id: "openai/gpt-5.4-mini"
-  #   tier: "complex"
-  #   task_type: "complex"
-  #   tool_calls: "5-12"
-  #   context_window: 400000
-  #   pricing:
-  #     input_per_1m_tokens:  "$0.75"
-  #     output_per_1m_tokens: "$4.50"
-  #   description: >
-  #     GPT-5.4 Mini by OpenAI. Core GPT-5.4 capabilities in a faster model.
-  #     Strong across reasoning, coding, and tool use. 400K context fits long
-  #     histories and large page contexts. Reserve for genuinely complex or
-  #     high-stakes requests — do not use as default.
-  #     $0.75/$4.50 per 1M tokens.
-  #   best_for:
-  #     - "Workflows with 5-12 tools and multi-level conditionals: 'create quote with discount if total > 5000'"
-  #     - "Cascading creation: 'create client, contact, linked project, and first task'"
-  #     - "Deep Many2one with multiple resolution levels"
-  #     - "Complex multi-module reports: 'full overview of everything that happened today'"
-  #     - "Very long conversation histories requiring coherence across many turns"
-  #     - "High-stakes operations where errors have real consequences (wrong PO, wrong approval)"
-  #   not_for: >
-  #     Tasks that Qwen 397B (reasoning) or Kimi (reasoning+) can handle correctly.
-  #     Do not use as default — escalate only when complexity genuinely demands it.
-
-  # - id: "openai/gpt-5.4-mini"
-  #   tier: "complex"
-  #   task_type: "complex"
-  #   tool_calls: "5-12"
-  #   context_window: 400000
-  #   pricing:
-  #     input_per_1m_tokens:  "$0.75"
-  #     output_per_1m_tokens: "$4.50"
-  #   description: >
-  #     GPT-5.4 Mini by OpenAI. Strong complex-tier model for deeper tool chains,
-  #     multi-step conditionals, and high-stakes workflows when Kimi or 397B is not
-  #     enough.
-  #   best_for:
-  #     - "5-12 tool calls with branching logic"
-  #     - "Cascading creation and multi-module reports"
-  #     - "High-stakes tasks where a stronger complex-tier model is justified"
-  #   not_for: >
-  #     Routine requests that can be handled by reasoning-tier or reasoning+ models.
 
 # =============================================================================
 # FALLBACK MODEL
@@ -362,9 +313,9 @@ default_model: "xiaomi/mimo-v2-omni"
 #  (removed)   │ qwen/qwen3-coder                │ 262K    │ $0.22     │ $1.00
 #  reasoning   │ qwen/qwen3.5-35b-a3b            │ 262K    │ $0.1625   │ $1.30
 #  reasoning   │ x-ai/grok-code-fast-1           │ 256K    │ $0.20     │ $1.50
-#  reasoning   │ qwen/qwen3.5-plus-02-15         │ 1M      │ $0.26     │ $1.56
 #  reasoning   │ qwen/qwen3.6-plus               │ 1M      │ $0.325    │ $1.95
 #  reasoning+  │ moonshotai/kimi-k2.5            │ 262K    │ $0.45     │ $2.20
+#  reasoning+  │ moonshotai/kimi-k2.6            │ 262K    │ $0.60     │ $2.80
 #  reasoning   │ qwen/qwen3.5-397b-a17b          │ 262K    │ $0.39     │ $2.34
 #  complex     │ openai/gpt-5.4-mini             │ 400K    │ $0.75     │ $4.50
 #  frontier    │ openai/gpt-5.4-mini             │ 400K    │ $0.75     │ $4.50
