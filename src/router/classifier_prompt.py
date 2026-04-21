@@ -2,6 +2,11 @@
 Factor AI — Classifier Prompt
 -------------------------------
 Builds system and user prompts for the routing classifier.
+
+O LLM é "burro" — precisa de instruções claras sobre:
+1. Quais modelos existem
+2. Quando usar cada um
+3. Preços (para decidir o mais barato possível)
 """
 
 # Agent context (English) — injected into the classifier prompt
@@ -14,39 +19,65 @@ AGENT CONTEXT:
   The agent can execute up to 15 chained tool calls per request.
 """
 
-# Classifier system prompt — simplified to return tier only
+# Classifier system prompt — ensina o LLM sobre os modelos
 CLASSIFIER_SYSTEM_PROMPT = """You are a model routing classifier for the Severino Agent.
 
-Classify each request into ONE of these 4 tiers:
+YOUR JOB:
+Given a user message, choose the BEST model from the list below.
+Prefer LOCAL models (factorai/*) when possible — they cost $0.
+Only use OpenRouter models (openrouter/*) when the task requires capabilities not available locally.
 
-TIER 1 (simple): Greetings, thanks, simple ERP queries, single-entity lookups
-  Examples: "olá", "bom dia", "total de vendas", "listar faturas", "telefone do cliente"
+AVAILABLE MODELS:
 
-TIER 2 (reasoning): Coding tasks, long context >262K, vision+text analysis, multi-step linear operations
-  Examples: "refactor código Python", "analisar documento grande", "imagem de gráfico"
+LOCAL MODELS (factorai/*) — COST $0:
+  • factorai/qwen3.6-35b-a3b
+    - 35B parameters (3B active MoE), 128K context
+    - Best for: complex reasoning, code generation, business logic, general tasks
+    - Tool calls: 1-5
+    - Use this as your DEFAULT choice for most tasks
+    
+  • factorai/qwen2.5:0.5b
+    - 0.5B parameters, 32K context
+    - Best for: simple greetings, basic classification, entity extraction
+    - Tool calls: 0-2
+    - Use only for VERY simple tasks (saudações, olá, bom dia, obrigado)
 
-TIER 3 (reasoning+): Many2one resolution WITH cross-entity synthesis, 2-8 tool calls
-  Examples: "criar fatura para cliente X com produtos do orçamento Y"
+OPENROUTER MODELS (openrouter/*) — COST MONEY:
+  • openrouter/qwen/qwen3.6-plus
+    - Use when: factorai models are insufficient for complex coding tasks
+    
+  • openrouter/qwen/qwen3.5-plus-02-15
+    - Use when: very long context (>128K) or complex vision analysis needed
+    
+  • openrouter/moonshotai/kimi-k2.5
+    - Use when: many2one resolution, cross-entity synthesis, 5+ tool calls required
+    
+  • openrouter/xiaomi/mimo-v2-omni
+    - Use when: video/audio processing, true multimodal (not just images)
 
-RULES:
-- Default to the LOWEST tier that can handle the task
-- Only escalate when multi-entity orchestration is clearly required
-- Reply with ONLY: {{"tier": 1}} or {{"tier": 2}} or {{"tier": 3}}
-- NO explanation, NO markdown, ONLY the JSON
+DECISION RULES:
+1. ALWAYS prefer factorai/* models (cost $0) unless the task clearly requires OpenRouter
+2. For simple greetings (olá, bom dia, obrigado) → factorai/qwen2.5:0.5b
+3. For most other tasks (code, business logic, reasoning) → factorai/qwen3.6-35b-a3b
+4. Only use OpenRouter when the task explicitly requires capabilities not in factorai models
+
+RESPONSE FORMAT:
+Reply with ONLY: {{"model": "model_id"}}
+Example: {{"model": "factorai/qwen3.6-35b-a3b"}}
+NO explanation, NO markdown, ONLY the JSON.
 """
 
 LOW_BUDGET_BLOCK = """
 ---
-BUDGET MODE: Prefer tier 1 and 2. Only use tier 3 when cross-entity synthesis is clearly required.
+BUDGET MODE: You MUST use factorai/* models ONLY. Never use openrouter/* models.
 ---
 """
 
-# User prompt — English, includes token estimates
+# User prompt — simple instruction
 CLASSIFIER_USER_PROMPT = """User message: "{user_message}"
 
-Estimated tokens: input ~{est_input}, output ~{est_output}.
-
-Reply with ONLY: {{"tier": N}} where N is 1, 2, or 3."""
+Choose the best model from the list above.
+Reply with ONLY: {{"model": "model_id"}}"""
 
 
 def build_classifier_prompt(
@@ -63,16 +94,12 @@ def build_classifier_prompt(
 
     All neural-facing text is English.
     """
-    est_total = estimated_input_tokens + estimated_output_tokens
-
     system = CLASSIFIER_SYSTEM_PROMPT
     if openrouter_balance_low:
         system = system + "\n" + LOW_BUDGET_BLOCK.strip() + "\n"
 
     user = CLASSIFIER_USER_PROMPT.format(
         user_message=user_message,
-        est_input=estimated_input_tokens,
-        est_output=estimated_output_tokens,
     )
 
     return system, user
