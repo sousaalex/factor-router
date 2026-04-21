@@ -168,25 +168,24 @@ models:
   #     Maximum reliability for complex ERP, deep ambiguity, or business synthesis (prefer qwen/qwen3.5-397b-a17b).
   #     Heavy Many2one, 2-8 tool chains, or autonomous visual coding pipelines (prefer Kimi).
 
-  # REMOVIDO: qwen/qwen3.5-plus-02-15 — tráfego migrado para qwen/qwen3.6-plus
-  # - id: "qwen/qwen3.5-plus-02-15"
-  #   tier: "reasoning"
-  #   task_type: "reasoning"
-  #   tool_calls: "1-5"
-  #   context_window: 1000000
-  #   pricing:
-  #     input_per_1m_tokens:  "$0.26"
-  #     output_per_1m_tokens: "$1.56"
-  #   description: >
-  #     Qwen3.5 Plus with 1M token context. Hybrid architecture for efficient inference.
-  #     Strong on coding, long documents, and multimodal tasks within 1-5 tool calls.
-  #   best_for:
-  #     - "Coding tasks: refactor, debug, implement, tests"
-  #     - "Long context: >262K tokens, large documents, transcripts"
-  #     - "Vision + text: image/chart analysis within 1M context"
-  #     - "Multi-step linear ERP operations"
-  #   not_for: >
-  #     Simple greetings or single-entity lookups. Heavy multi-entity orchestration with 2-8 tools. Deep conditional workflows with 5+ tools.
+  - id: "qwen/qwen3.5-plus-02-15"
+    tier: "reasoning"
+    task_type: "reasoning"
+    tool_calls: "1-5"
+    context_window: 1000000
+    pricing:
+      input_per_1m_tokens:  "$0.26"
+      output_per_1m_tokens: "$1.56"
+    description: >
+      Qwen3.5 Plus with 1M token context. Hybrid architecture for efficient inference.
+      Strong on coding, long documents, and multimodal tasks within 1-5 tool calls.
+    best_for:
+      - "Coding tasks: refactor, debug, implement, tests"
+      - "Long context: >262K tokens, large documents, transcripts"
+      - "Vision + text: image/chart analysis within 1M context"
+      - "Multi-step linear ERP operations"
+    not_for: >
+      Simple greetings or single-entity lookups. Heavy multi-entity orchestration with 2-8 tools. Deep conditional workflows with 5+ tools.
 
   - id: "qwen/qwen3.5-397b-a17b"
     tier: "reasoning"
