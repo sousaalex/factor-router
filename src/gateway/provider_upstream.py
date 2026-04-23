@@ -2,6 +2,7 @@
 Resolve o endpoint real e o nome do modelo na API a partir do model_id interno.
 
 Convenção:
+  - factorai/<name>   → POST {FACTORAI_VLLM_BASE_URL}/chat/completions, model=<name>
   - ollama/<name>     → POST {OLLAMA_BASE_URL}/v1/chat/completions, model=<name>
   - openrouter/<id>   → POST {UPSTREAM_URL}/chat/completions, model=<id>
   - <id> (sem prefixo) → OpenRouter (compatível com configs antigas), model=<id>
@@ -51,6 +52,39 @@ def resolve_upstream(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"error": "missing_model", "message": "model_id vazio."},
+        )
+
+    if mid.startswith("factorai/"):
+        base = (settings.factorai_vllm_base_url or "").strip().rstrip("/")
+        if not base:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "error": "factorai_vllm_not_configured",
+                    "message": (
+                        "Modelo factorai/… escolhido mas FACTORAI_VLLM_BASE_URL não está definido "
+                        "no gateway (.env). Ex.: http://192.168.1.223:8000/v1"
+                    ),
+                },
+            )
+        name = mid[len("factorai/") :].strip()
+        if not name:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "error": "invalid_factorai_model",
+                    "message": "ID inválido: use factorai/<nome> (ex. factorai/qwen3.6-35b-a3b).",
+                },
+            )
+        api_key = (settings.factorai_vllm_api_key or "EMPTY").strip()
+        url = f"{base}/chat/completions"
+        return UpstreamTarget(
+            chat_completions_url=url,
+            api_model=name,
+            headers={"Authorization": f"Bearer {api_key}"} if api_key != "EMPTY" else {},
+            omit_stream_options=False,
+            selected_env="factorai",
+            api_key_source="FACTORAI_VLLM_API_KEY",
         )
 
     if mid.startswith("ollama/"):

@@ -1,8 +1,12 @@
 """
 Factor AI — LLM Router
 -----------------------
-Escolhe o modelo mais adequado e mais barato para cada mensagem.
-Baseado em Signal-Decision (vLLM SR 2025) e Router-R1 (UIUC NeurIPS 2025).
+Escolhe o modelo mais adequado e mais barato para cada mensagem usando APENAS o classificador LLM (Ollama).
+Sem heurística de keywords — o LLM decide baseado no prompt em classifier_prompt.py.
+
+Timeout: CLASSIFIER_TIMEOUT_SECONDS (default: 2.0s)
+Se o LLM demorar >2s → fallback para default_model do YAML.
+
 Nunca bloqueia o agente — fallback gracioso sempre.
 """
 from __future__ import annotations
@@ -49,7 +53,6 @@ class RouterResult:
 OLLAMA_BASE_URL    = os.getenv("OLLAMA_BASE_URL", "")
 CLASSIFIER_MODEL   = os.getenv("CLASSIFIER_MODEL", "qwen2.5:0.5b")
 CLASSIFIER_TIMEOUT = float(os.getenv("CLASSIFIER_TIMEOUT_SECONDS", "2.0"))
-ROUTER_DECISION_MODE = os.getenv("ROUTER_DECISION_MODE", "hybrid").strip().lower()
 # native → POST /api/chat (Ollama). openai → POST /v1/chat/completions (Ollama recente, LM Studio, etc.)
 _CLASSIFIER_API_RAW = (os.getenv("OLLAMA_CLASSIFIER_API") or "native").strip().lower()
 
@@ -191,139 +194,18 @@ def _heuristic_route_model(
     openrouter_balance_low: bool = False,
 ) -> str:
     """
-    Decide o modelo localmente, sem chamar um LLM.
-
-    O objectivo é devolver o `model_id` em poucas microssegundos/milissegundos
-    quando a intenção já está clara.
+    Fallback simples quando o LLM classifier falha ou timeout.
+    Retorna o default_model configurado no YAML.
     """
-    text = _normalize_match_text(user_message)
-    if not text:
-        return _DEFAULT_MODEL
-
-    if tool_choice == "required":
-        return "openai/gpt-4.1-mini"
-
-    if any(term in text for term in ("video", "audio", "omni-modal", "omnimodal", "multimodal")):
-        return "xiaomi/mimo-v2-omni"
-
-    if any(term in text for term in ("complex tier", "complex")):
-        return "moonshotai/kimi-k2.5"
-
-    if any(term in text for term in ("frontier", "maximum capability", "maximum", "best available")):
-        return "moonshotai/kimi-k2.5"
-
-    if any(term in text for term in ("reasoning+", "reasoning plus", "kimi", "k2.5", "kimi k2.5")):
-        return "moonshotai/kimi-k2.5"
-
-    if has_image or any(term in text for term in ("screenshot", "image", "chart", "plot", "diagram", "mockup", "pdf", "vision", "visual")):
-        if any(term in text for term in ("code", "coding", "refactor", "debug", "implement", "ui", "frontend")):
-            return "moonshotai/kimi-k2.5"
-        if len(text) > 8_000 or any(term in text for term in ("document", "transcript", "logs", "paste", "long context")):
-            return "qwen/qwen3.5-plus-02-15"
-        return "qwen/qwen3.5-plus-02-15"
-
-    if len(text) > 12_000 or any(term in text for term in ("long context", "full repo", "full file", "entire repo", "transcript", "log dump")):
-        return "qwen/qwen3.5-plus-02-15"
-
-    if any(term in text for term in ("many2one", "lookup", "resolve id", "resolve the id", "multi-step", "multi step", "conditional", "if then", "if/else", "cascade")):
-        return "moonshotai/kimi-k2.5"
-
-    if any(term in text for term in ("create", "update", "delete", "approve", "assign", "sync", "orchestrate")) and _looks_like_business_work(text):
-        return "qwen/qwen3.5-397b-a17b"
-
-    if any(term in text for term in ("code", "bug", "fix", "refactor", "implement", "test", "repo", "pull request", "python", "typescript", "javascript", "react", "api", "endpoint", "class", "function", "frontend", "3d", "game")):
-        return "qwen/qwen3.6-plus"
-
-    if _looks_like_business_work(text):
-        return "qwen/qwen3.5-397b-a17b"
-
-    return "qwen/qwen3.5-397b-a17b" if openrouter_balance_low else _DEFAULT_MODEL
+    return _DEFAULT_MODEL
 
 
 def _heuristic_is_confident(user_message: str, *, tool_choice: Any = None) -> bool:
     """
-    Heurística de confiança para o modo híbrido.
-
-    Se o texto tiver sinais claros, fica local. Caso contrário, chama o classificador LLM.
+    Sempre retorna False para forçar o uso do LLM classifier.
+    O router decide baseado apenas no LLM, sem heurística de keywords.
     """
-    text = _normalize_match_text(user_message)
-    if not text:
-        return True
-    if tool_choice == "required":
-        return True
-
-    confident_markers = (
-        "gpt-5.4-mini",
-        "gpt 5.4 mini",
-        "frontier",
-        "maximum capability",
-        "maximum",
-        "best available",
-        "reasoning+",
-        "reasoning plus",
-        "kimi",
-        "k2.5",
-        "screenshot",
-        "image",
-        "chart",
-        "plot",
-        "diagram",
-        "mockup",
-        "pdf",
-        "vision",
-        "visual",
-        "long context",
-        "full repo",
-        "full file",
-        "entire repo",
-        "transcript",
-        "log dump",
-        "many2one",
-        "lookup",
-        "resolve id",
-        "resolve the id",
-        "multi-step",
-        "multi step",
-        "conditional",
-        "if then",
-        "if/else",
-        "cascade",
-        "code",
-        "bug",
-        "fix",
-        "refactor",
-        "implement",
-        "test",
-        "repo",
-        "pull request",
-        "python",
-        "typescript",
-        "javascript",
-        "react",
-        "api",
-        "endpoint",
-        "class",
-        "function",
-        "invoice",
-        "order",
-        "customer",
-        "client",
-        "company",
-        "account",
-        "stock",
-        "product",
-        "quote",
-        "budget",
-        "erp",
-        "purchase",
-        "sale",
-        "approval",
-        "report",
-        "revenue",
-        "margin",
-        "ledger",
-    )
-    return any(marker in text for marker in confident_markers)
+    return False
 
 
 async def _call_classifier(
@@ -388,66 +270,6 @@ async def _call_classifier(
     return content.strip(), inp, out, duration_ms
 
 
-def _select_model_for_tier(
-    tier: int,
-    *,
-    user_message: str,
-    raw_user_message: Any,
-    tool_choice: Any = None,
-) -> str:
-    text = _normalize_match_text(user_message)
-    has_image = _content_has_image(raw_user_message)
-    has_omni_signal = has_image or any(
-        term in text for term in ("video", "audio", "omni-modal", "omnimodal", "multimodal", "vision")
-    )
-
-    if tier == 1:
-        return "qwen/qwen3.5-397b-a17b"
-
-    if tier == 2:
-        if tool_choice == "required":
-            return "openai/gpt-4.1-mini"
-        if has_omni_signal and any(term in text for term in ("video", "audio", "omni", "multimodal")):
-            return "xiaomi/mimo-v2-omni"
-        if any(
-            term in text
-            for term in ("code", "coding", "refactor", "debug", "implement", "frontend", "3d", "game", "repo")
-        ):
-            return "qwen/qwen3.6-plus"
-        if len(text) > 12_000 or any(term in text for term in ("long context", "full repo", "full file", "transcript", "log dump")):
-            return "qwen/qwen3.5-plus-02-15"
-        return "openai/gpt-4.1-mini"
-
-    if tier == 3:
-        if tool_choice == "required":
-            return "openai/gpt-4.1-mini"
-        if any(
-            term in text
-            for term in ("code", "coding", "refactor", "debug", "implement", "frontend", "3d", "game", "repo")
-        ) and not _looks_like_business_work(text):
-            return "qwen/qwen3.6-plus"
-        if has_omni_signal:
-            return "xiaomi/mimo-v2-omni"
-        strong_tier3_markers = (
-            "many2one",
-            "resolve id",
-            "resolve the id",
-            "multi-step",
-            "multi step",
-            "conditional",
-            "if then",
-            "if/else",
-            "cascade",
-            "cross-entity",
-            "cross entity",
-        )
-        if not any(marker in text for marker in strong_tier3_markers):
-            return "qwen/qwen3.5-plus-02-15"
-        return "moonshotai/kimi-k2.5"
-
-    return _DEFAULT_MODEL
-
-
 def _parse_model_from_response(raw: str) -> tuple[str, Optional[str]]:
     """
     Parse classifier response.
@@ -489,66 +311,25 @@ async def route(
     tool_choice: Any = None,
 ) -> RouterResult:
     """
-    Given the user message, returns the model to use.
-    Accepta str ou content OpenAI multimodal (lista de partes).
-    Always returns a valid result — never raises an exception.
+    Router LLM puro — sem heurística, sem keywords, sem modo híbrido.
+    
+    Fluxo:
+    1. Chama classificador LLM (Ollama) com timeout de 2s
+    2. Se timeout/erro → retorna default_model do YAML
+    3. Se tool_choice="required" → força openai/gpt-4.1-mini
     """
-    raw_user_message = user_message
     user_message = flatten_openai_message_content(user_message)
     if not user_message or not user_message.strip():
         print(f"[LLMRouter] model: {_DEFAULT_MODEL}")
-        return RouterResult(model_id=_DEFAULT_MODEL, input_tokens=0, output_tokens=0, raw_response="(empty message — default)")
+        return RouterResult(model_id=_DEFAULT_MODEL, input_tokens=0, output_tokens=0, raw_response="(empty message)")
 
     est_in, est_out = estimate_request_tokens(user_message)
-    heuristic_model = _heuristic_route_model(
-        user_message,
-        has_image=_content_has_image(raw_user_message),
-        tool_choice=tool_choice,
-        openrouter_balance_low=openrouter_balance_low,
-    )
-    decision_mode = ROUTER_DECISION_MODE if ROUTER_DECISION_MODE in {"heuristic", "hybrid", "llm"} else "hybrid"
-
-    if decision_mode == "heuristic" or (
-        decision_mode == "hybrid" and _heuristic_is_confident(user_message, tool_choice=tool_choice)
-    ):
-        model_id = heuristic_model
-        logger.info(
-            "[Router] heuristic '%s...' -> %s (mode=%s)",
-            user_message[:50],
-            model_id,
-            decision_mode,
-        )
-        print(f"[LLMRouter] model: {model_id}")
-        return RouterResult(
-            model_id=model_id,
-            input_tokens=0,
-            output_tokens=0,
-            raw_response=f"(heuristic:{decision_mode})",
-            eval_duration_ms=0.0,
-            estimated_input_tokens=est_in,
-            estimated_output_tokens=est_out,
-        )
-
-    if decision_mode != "llm" and decision_mode != "hybrid":
-        decision_mode = "hybrid"
-
     base = (OLLAMA_BASE_URL or "").strip().rstrip("/")
+    
     if not base:
-        fallback_model = heuristic_model if decision_mode in {"hybrid", "llm"} else _DEFAULT_MODEL
-        logger.warning(
-            "[Router] OLLAMA_BASE_URL não definido — a usar modelo fallback: %s",
-            fallback_model,
-        )
-        print(f"[Router] OLLAMA_BASE_URL não definido — falling back to: {fallback_model}")
-        print(f"[LLMRouter] model: {fallback_model}")
-        return RouterResult(
-            model_id=fallback_model,
-            input_tokens=0,
-            output_tokens=0,
-            raw_response="(OLLAMA_BASE_URL unset)",
-            estimated_input_tokens=est_in,
-            estimated_output_tokens=est_out,
-        )
+        logger.warning("[Router] OLLAMA_BASE_URL não definido — fallback: %s", _DEFAULT_MODEL)
+        print(f"[LLMRouter] model: {_DEFAULT_MODEL} (OLLAMA_BASE_URL unset)")
+        return RouterResult(model_id=_DEFAULT_MODEL, input_tokens=0, output_tokens=0, raw_response="(no ollama)")
 
     try:
         content, inp, out, duration_ms = await _call_classifier(
@@ -559,130 +340,20 @@ async def route(
             openrouter_balance_low=openrouter_balance_low,
         )
         model_id, fallback_reason = _parse_model_from_response(content)
-        if fallback_reason and decision_mode == "llm":
-            model_id = heuristic_model
-        if model_id.startswith("__tier__:"):
-            tier = int(model_id.split(":", 1)[1])
-            model_id = _select_model_for_tier(
-                tier,
-                user_message=user_message,
-                raw_user_message=raw_user_message,
-                tool_choice=tool_choice,
-            )
+        
         if tool_choice == "required":
             model_id = "openai/gpt-4.1-mini"
-        logger.info("[Router] '%s...' -> %s (est ~%d tokens, clf in=%d out=%d, %sms)",
-                    user_message[:50], model_id, est_in + est_out, inp, out,
-                    f"{duration_ms:.0f}" if duration_ms else "?")
+        
+        logger.info("[Router] '%s...' -> %s (%sms)", user_message[:50], model_id, f"{duration_ms:.0f}" if duration_ms else "?")
         print(f"[LLMRouter] model: {model_id}")
-        return RouterResult(model_id=model_id, input_tokens=inp, output_tokens=out,
-                           raw_response=content, eval_duration_ms=duration_ms,
-                           estimated_input_tokens=est_in, estimated_output_tokens=est_out)
+        return RouterResult(model_id=model_id, input_tokens=inp, output_tokens=out, raw_response=content, eval_duration_ms=duration_ms, estimated_input_tokens=est_in, estimated_output_tokens=est_out)
 
     except httpx.TimeoutException:
-        fallback_model = heuristic_model if decision_mode in {"hybrid", "llm"} else _DEFAULT_MODEL
-        logger.warning("[Router] Classifier timeout (%.1fs) — falling back to: %s", CLASSIFIER_TIMEOUT, fallback_model)
-        print(f"[Router] Classifier timeout ({CLASSIFIER_TIMEOUT}s) — falling back to: {fallback_model}")
-        print(f"[LLMRouter] model: {fallback_model}")
-        return RouterResult(model_id=fallback_model, input_tokens=0, output_tokens=0,
-                           raw_response="(timeout)", estimated_input_tokens=est_in, estimated_output_tokens=est_out)
-
-    except httpx.ConnectError as e:
-        fallback_model = heuristic_model if decision_mode in {"hybrid", "llm"} else _DEFAULT_MODEL
-        hint = (
-            " Dentro de Docker, usa OLLAMA_BASE_URL=http://host.docker.internal:11434 "
-            "(ou o hostname do serviço na rede), não localhost."
-        )
-        logger.error(
-            "[Router] Sem ligação ao Ollama em %s — %s.%s Falling back to: %s",
-            OLLAMA_BASE_URL,
-            e,
-            hint,
-            fallback_model,
-        )
-        print(
-            f"[Router] Sem ligação ao Ollama em {OLLAMA_BASE_URL!r}: {e}.{hint} "
-            f"Falling back to: {fallback_model}"
-        )
-        print(f"[LLMRouter] model: {fallback_model}")
-        return RouterResult(
-            model_id=fallback_model,
-            input_tokens=0,
-            output_tokens=0,
-            raw_response=f"(connect_error: {e})",
-            estimated_input_tokens=est_in,
-            estimated_output_tokens=est_out,
-        )
-
-    except httpx.RequestError as e:
-        fallback_model = heuristic_model if decision_mode in {"hybrid", "llm"} else _DEFAULT_MODEL
-        logger.error(
-            "[Router] Erro de rede ao falar com Ollama (%s): %s — falling back to: %s",
-            OLLAMA_BASE_URL,
-            e,
-            fallback_model,
-        )
-        print(f"[Router] Erro de rede Ollama ({OLLAMA_BASE_URL}): {e} — falling back to: {fallback_model}")
-        print(f"[LLMRouter] model: {fallback_model}")
-        return RouterResult(
-            model_id=fallback_model,
-            input_tokens=0,
-            output_tokens=0,
-            raw_response=f"(request_error: {e})",
-            estimated_input_tokens=est_in,
-            estimated_output_tokens=est_out,
-        )
-
-    except httpx.HTTPStatusError as e:
-        fallback_model = heuristic_model if decision_mode in {"hybrid", "llm"} else _DEFAULT_MODEL
-        url = str(e.request.url)
-        code = e.response.status_code
-        response_text = ""
-        try:
-            response_text = (e.response.text or "").strip()
-        except Exception:
-            response_text = ""
-        openai_hint = (
-            " Define no .env: OLLAMA_CLASSIFIER_API=openai "
-            "(usa POST /v1/chat/completions — Ollama com API OpenAI, LM Studio, etc.)."
-        )
-        native_hint = (
-            " Confirma que é Ollama com endpoint /api/chat ou usa OLLAMA_CLASSIFIER_API=native."
-        )
-        hint = openai_hint if code == 404 and "/api/chat" in url else native_hint if code == 404 else ""
-        if code == 400:
-            hint = (
-                " O endpoint aceitou a ligação, mas recusou o payload/classificador. "
-                "Confirma CLASSIFIER_MODEL puxado localmente e, se continuares em problema, "
-                "força OLLAMA_CLASSIFIER_API=native."
-            )
-        logger.error(
-            "[Router] HTTP %s ao classificar (%s): %s.%s body=%r Falling back to: %s",
-            code,
-            url,
-            e.response.reason_phrase or "",
-            hint,
-            response_text[:300],
-            fallback_model,
-        )
-        print(
-            f"[Router] HTTP {code} no classificador ({url}).{hint} "
-            f"Falling back to: {fallback_model}"
-        )
-        print(f"[LLMRouter] model: {fallback_model}")
-        return RouterResult(
-            model_id=fallback_model,
-            input_tokens=0,
-            output_tokens=0,
-            raw_response=f"(http_{code})",
-            estimated_input_tokens=est_in,
-            estimated_output_tokens=est_out,
-        )
+        logger.warning("[Router] Timeout (%.1fs) → fallback: %s", CLASSIFIER_TIMEOUT, _DEFAULT_MODEL)
+        print(f"[LLMRouter] model: {_DEFAULT_MODEL} (timeout)")
+        return RouterResult(model_id=_DEFAULT_MODEL, input_tokens=0, output_tokens=0, raw_response="(timeout)")
 
     except Exception as e:
-        fallback_model = heuristic_model if decision_mode in {"hybrid", "llm"} else _DEFAULT_MODEL
-        logger.error("[Router] Unexpected error: %s — falling back to: %s", e, fallback_model)
-        print(f"[Router] Unexpected error: {e} — falling back to: {fallback_model}")
-        print(f"[LLMRouter] model: {fallback_model}")
-        return RouterResult(model_id=fallback_model, input_tokens=0, output_tokens=0,
-                           raw_response=f"(error: {e})", estimated_input_tokens=est_in, estimated_output_tokens=est_out)
+        logger.error("[Router] Erro → fallback: %s | %s", _DEFAULT_MODEL, e)
+        print(f"[LLMRouter] model: {_DEFAULT_MODEL} (error: {e})")
+        return RouterResult(model_id=_DEFAULT_MODEL, input_tokens=0, output_tokens=0, raw_response=f"(error: {e})")

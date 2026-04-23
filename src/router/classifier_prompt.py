@@ -2,6 +2,11 @@
 Factor AI — Classifier Prompt
 -------------------------------
 Builds system and user prompts for the routing classifier.
+
+O LLM é "burro" — precisa de instruções claras sobre:
+1. Quais modelos existem
+2. Quando usar cada um
+3. Preços (para decidir o mais barato possível)
 """
 
 # Agent context (English) — injected into the classifier prompt
@@ -14,39 +19,60 @@ AGENT CONTEXT:
   The agent can execute up to 15 chained tool calls per request.
 """
 
-# Classifier system prompt — simplified to return tier only
+# Classifier system prompt — ensina o LLM sobre CRITÉRIOS (sem nomes de modelos)
 CLASSIFIER_SYSTEM_PROMPT = """You are a model routing classifier for the Severino Agent.
 
-Classify each request into ONE of these 4 tiers:
+YOUR JOB:
+Given a user message, choose the BEST model by returning its model_id.
+Prefer LOCAL models when possible — they cost $0.
+Only use CLOUD models when the task requires capabilities not available locally.
 
-TIER 1 (simple): Greetings, thanks, simple ERP queries, single-entity lookups
-  Examples: "olá", "bom dia", "total de vendas", "listar faturas", "telefone do cliente"
+MODEL CATEGORIES:
 
-TIER 2 (reasoning): Coding tasks, long context >262K, vision+text analysis, multi-step linear operations
-  Examples: "refactor código Python", "analisar documento grande", "imagem de gráfico"
+LOCAL MODELS (factorai/*) — COST $0:
+  • Small local model (0.5B - 1B params)
+    - Use for: simple greetings, thanks, basic classification
+    - Examples: "olá", "bom dia", "boa tarde", "obrigado", "thanks"
+    
+  • Large local model (35B+ params, MoE)
+    - Use for: ALMOST EVERYTHING — this is your DEFAULT
+    - Code generation, debugging, refactoring
+    - Business logic, ERP queries, data analysis
+    - Reasoning tasks, multi-step operations
+    - Document analysis, summarization
+    - Tool calls (1-5 tools)
 
-TIER 3 (reasoning+): Many2one resolution WITH cross-entity synthesis, 2-8 tool calls
-  Examples: "criar fatura para cliente X com produtos do orçamento Y"
+CLOUD MODELS (openrouter/*) — COST MONEY:
+  • Use ONLY when:
+    - Task requires 256K+ context (larger than local models)
+    - Specialized vision analysis (charts, complex diagrams)
+    - Many2one resolution across multiple entities
+    - 5+ tool calls in sequence
+    - Task explicitly requires a specific cloud model
 
-RULES:
-- Default to the LOWEST tier that can handle the task
-- Only escalate when multi-entity orchestration is clearly required
-- Reply with ONLY: {{"tier": 1}} or {{"tier": 2}} or {{"tier": 3}}
-- NO explanation, NO markdown, ONLY the JSON
+DECISION RULES:
+1. ALWAYS prefer local models (factorai/*) — cost $0
+2. For greetings (olá, bom dia, obrigado) → small local model
+3. For EVERYTHING ELSE → large local model (your default choice)
+4. Only use cloud models when task EXPLICITLY requires capabilities not in local models
+
+RESPONSE FORMAT:
+Reply with ONLY: {{"model": "model_id"}}
+Example: {{"model": "factorai/qwen3.6-35b-a3b"}}
+NO explanation, NO markdown, ONLY the JSON.
 """
 
 LOW_BUDGET_BLOCK = """
 ---
-BUDGET MODE: Prefer tier 1 and 2. Only use tier 3 when cross-entity synthesis is clearly required.
+BUDGET MODE: You MUST use factorai/* models ONLY. Never use openrouter/* models.
 ---
 """
 
-# User prompt — English, includes token estimates
+# User prompt — simple instruction
 CLASSIFIER_USER_PROMPT = """User message: "{user_message}"
 
-Estimated tokens: input ~{est_input}, output ~{est_output}.
-
-Reply with ONLY: {{"tier": N}} where N is 1, 2, or 3."""
+Choose the best model from the list above.
+Reply with ONLY: {{"model": "model_id"}}"""
 
 
 def build_classifier_prompt(
@@ -63,16 +89,12 @@ def build_classifier_prompt(
 
     All neural-facing text is English.
     """
-    est_total = estimated_input_tokens + estimated_output_tokens
-
     system = CLASSIFIER_SYSTEM_PROMPT
     if openrouter_balance_low:
         system = system + "\n" + LOW_BUDGET_BLOCK.strip() + "\n"
 
     user = CLASSIFIER_USER_PROMPT.format(
         user_message=user_message,
-        est_input=estimated_input_tokens,
-        est_output=estimated_output_tokens,
     )
 
     return system, user

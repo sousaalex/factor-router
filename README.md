@@ -176,6 +176,71 @@ Um único `.env` para o gateway e para o Postgres.
 
 ---
 
+## FactorAI vLLM Local Provider
+
+O FactorRouter suporta **múltiplos providers** simultaneamente. Podes usar o teu próprio vLLM local como alternativa ao OpenRouter.
+
+### Configuração
+
+```bash
+# .env
+FACTORAI_VLLM_BASE_URL=http://192.168.1.223:8000/v1
+FACTORAI_VLLM_API_KEY=EMPTY          # vLLM não requer auth (ou define a tua key)
+FACTORAI_VLLM_TIMEOUT=120
+```
+
+### Convenção de Modelos
+
+| Prefixo | Provider | Exemplo |
+|---------|----------|---------|
+| `factorai/` | **vLLM local** (teus modelos) | `factorai/qwen3.6-35b-a3b` |
+| `openrouter/` | **OpenRouter** (cloud) | `openrouter/qwen/qwen3.6-plus` |
+| `ollama/` | **Ollama local** (legado) | `ollama/gemma4:latest` |
+
+### Como Usar
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    api_key="sk-fai-xxx",              # Factor Router key
+    base_url="http://localhost:8003/v1"
+)
+
+# Usa modelo local (custo $0)
+response = client.chat.completions.create(
+    model="factorai/qwen3.6-35b-a3b",
+    messages=[{"role": "user", "content": "Olá!"}],
+    stream=True
+)
+```
+
+### Modelos Disponíveis
+
+| Modelo | Tier | Tool Calls | Contexto | Custo |
+|--------|------|------------|----------|-------|
+| `factorai/qwen3.6-35b-a3b` | reasoning | 1-5 | 128K | $0 |
+| `factorai/qwen2.5:0.5b` | simple | 0-2 | 32K | $0 |
+
+### Vantagens
+
+✅ **Custo zero** — Modelos locais não têm custo de API  
+✅ **Latência reduzida** — Sem rede para cloud  
+✅ **Compliance** — Dados sensíveis não saem da tua rede  
+✅ **Failover automático** — Se vLLM falhar, fallback para OpenRouter
+
+### Testar
+
+```bash
+# Teste manual
+python scripts/test-factorai-model.py --model factorai/qwen3.6-35b-a3b
+
+# Testes unitários
+pytest test/vllm_provider_test.py -v
+```
+
+---
+
 ## Gestão de Apps e API Keys
 
 ### Como funciona

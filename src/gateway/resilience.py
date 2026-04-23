@@ -191,6 +191,7 @@ async def retry_upstream_call(
 
 # Fallback chain: when a model fails, try these in order
 _FALLBACK_CHAIN: list[str] = [
+    "factorai/qwen3.6-35b-a3b",  # Local fallback primeiro (custo $0)
     "moonshotai/kimi-k2.5",
     "qwen/qwen3.6-plus",
     "x-ai/grok-4.1-fast",

@@ -118,22 +118,21 @@ models:
   # Direct Agiweb queries, focused CRUD, linear reasoning, code, light VLM
   # ===========================================================================
 
-
-  - id: "qwen/qwen3.6-plus"
+  - id: "factorai/Qwen/Qwen3.6-35B-A3B-FP8"
     tier: "reasoning"
     task_type: "reasoning"
-    tool_calls: "1-5"
-    context_window: 1000000
+    tool_calls: "multiple"
+    context_window: 262144
     pricing:
-      input_per_1m_tokens:  "$0.325"
-      output_per_1m_tokens: "$1.95"
+      input_per_1m_tokens: "$0.80"
+      output_per_1m_tokens: "$2.40"
     description: >
-      Qwen3.6 Plus by Qwen. Hybrid linear attention + sparse mixture-of-experts routing.
+      Qwen3.6 35B (3B ativos) MoE - FactorAI vLLM local.
+      Hybrid linear attention + sparse mixture-of-experts routing.
       Compared to the 3.5 series, it brings major gains in agentic coding, front-end
       development, and overall reasoning, with a significantly improved vibe-coding
       experience. Strong on complex tasks such as 3D scenes, games, and repository-level
-      problem solving (SWE-bench Verified 78.8). 1,000,000 context. $0.325/$1.95 per
-      1M tokens.
+      problem solving (SWE-bench Verified 73.4). 131,072 context. Private, no rate limits.
     best_for:
       - "Reasoning-tier tasks with stronger coding output and robust cost control"
       - "Agentic coding, front-end implementation, and repository-level problem solving"
@@ -141,90 +140,114 @@ models:
     not_for: >
       Long-horizon workflows with high ambiguity, deep conditional orchestration,
       or broad cross-entity synthesis; escalate to 397B, Kimi, or complex tier as needed.
+    provider: "factorai"
+    is_local: true
 
-  # - id: "qwen/qwen3.5-35b-a3b" #Best modelo but not for tool call and complex tasks
+  # - id: "factorai/Qwen/Qwen3-Coder-Next-FP8"
   #   tier: "reasoning"
   #   task_type: "reasoning"
   #   tool_calls: "1-5"
   #   context_window: 262144
   #   pricing:
-  #     input_per_1m_tokens:  "$0.1625"
-  #     output_per_1m_tokens: "$1.30"
+  #     input_per_1m_tokens: "$0.15"
+  #     output_per_1m_tokens: "$0.80"
   #   description: >
-  #     Qwen3.5-35B-A3B by Qwen. Native vision-language model: hybrid linear attention plus sparse
-  #     mixture-of-experts for efficient inference. Overall capability in line with Qwen3.5-27B-class
-  #     dense models, with multimodal (image+text) support. Strong mid-tier fit for finance- and
-  #     programming-adjacent turns when full 397B depth is unnecessary. 262K context. $0.1625/$1.30
-  #     per 1M tokens.
+  #     Qwen3-Coder-Next (80B MoE, ~3B active) optimized for agentic coding and real-world
+  #     development workflows. Designed for long-horizon tasks, tool usage, and iterative
+  #     execution loops. Performs reliably in CLI/IDE environments and integrates well with
+  #     agent scaffolds. Trades some deep reasoning capability for significantly improved
+  #     efficiency and cost-performance. Native 256k context. No <think> output.
   #   best_for:
-  #     - "Light multimodal Agiweb turns: describe or interpret an image, chart, screenshot, or PDF snippet with 1-5 tools"
-  #     - "Budget-conscious reasoning with vision in the loop (lower listed input cost than 397B)"
-  #     - "Moderate programming with simple visuals when neither 35B VLM nor Kimi-grade visual agents are needed"
-  #     - "Straightforward finance-style Q&A and numeric reasoning at reasoning-tier depth"
+  #     - "Agentic coding with tool usage (CLI, IDE, multi-step execution)"
+  #     - "Long-running coding agents with cost constraints"
+  #     - "Local or always-on deployment scenarios"
+  #     - "Recovery from execution errors and iterative development loops"
   #   not_for: >
-  #     Primary deliverable is large-repo software engineering (prefer qwen/qwen3.5-plus-02-15 for long context, or escalate to Kimi for reasoning+ depth).
-  #     Single window clearly needs beyond 262K tokens or very long multimodal documents at reasoning depth
-  #     (prefer qwen/qwen3.5-plus-02-15).
-  #     Maximum reliability for complex ERP, deep ambiguity, or business synthesis (prefer qwen/qwen3.5-397b-a17b).
-  #     Heavy Many2one, 2-8 tool chains, or autonomous visual coding pipelines (prefer Kimi).
+      
+  #   provider: "factoai"
+  #   is_local: true
+  
 
-  - id: "qwen/qwen3.5-plus-02-15"
-    tier: "reasoning"
-    task_type: "reasoning"
-    tool_calls: "1-5"
-    context_window: 1000000
-    pricing:
-      input_per_1m_tokens:  "$0.26"
-      output_per_1m_tokens: "$1.56"
-    description: >
-      Qwen3.5 Plus with 1M token context. Hybrid architecture for efficient inference.
-      Strong on coding, long documents, and multimodal tasks within 1-5 tool calls.
-    best_for:
-      - "Coding tasks: refactor, debug, implement, tests"
-      - "Long context: >262K tokens, large documents, transcripts"
-      - "Vision + text: image/chart analysis within 1M context"
-      - "Multi-step linear ERP operations"
-    not_for: >
-      Simple greetings or single-entity lookups. Heavy multi-entity orchestration with 2-8 tools. Deep conditional workflows with 5+ tools.
+  # - id: "qwen/qwen3.6-plus"
+  #   tier: "reasoning"
+  #   task_type: "reasoning"
+  #   tool_calls: "1-5"
+  #   context_window: 1000000
+  #   pricing:
+  #     input_per_1m_tokens:  "$0.325"
+  #     output_per_1m_tokens: "$1.95"
+  #   description: >
+  #     Qwen3.6 Plus by Qwen. Hybrid linear attention + sparse mixture-of-experts routing.
+  #     Compared to the 3.5 series, it brings major gains in agentic coding, front-end
+  #     development, and overall reasoning, with a significantly improved vibe-coding
+  #     experience. Strong on complex tasks such as 3D scenes, games, and repository-level
+  #     problem solving (SWE-bench Verified 78.8). 1,000,000 context. $0.325/$1.95 per
+  #     1M tokens.
+  #   best_for:
+  #     - "Reasoning-tier tasks with stronger coding output and robust cost control"
+  #     - "Agentic coding, front-end implementation, and repository-level problem solving"
+  #     - "Operational Agiweb turns that need higher capability than chat-tier models"
+  #   not_for: >
+  #     Long-horizon workflows with high ambiguity, deep conditional orchestration,
+  #     or broad cross-entity synthesis; escalate to 397B, Kimi, or complex tier as needed.
 
-  - id: "qwen/qwen3.5-397b-a17b"
-    tier: "reasoning"
-    task_type: "reasoning"
-    tool_calls: "1-5"
-    context_window: 262144
-    pricing:
-      input_per_1m_tokens:  "$0.39"
-      output_per_1m_tokens: "$2.34"
-    description: >
-      Qwen3.5 397B-A17B. Reliable reasoning with strong tool robustness.
-      Best for routine ERP queries and business operations. 262K context.
-    best_for:
-      - "Simple ERP queries: totals, lists, state queries"
-      - "Single-entity CRUD operations"
-      - "Greetings and conversational turns"
-      - "Direct Agiweb queries with 1-5 linear tool calls"
-    not_for: >
-      Long context needs >262K. Multi-entity orchestration requiring 2-8 tools.
-      Deep conditional workflows with 5+ tools.
+  # - id: "qwen/qwen3.5-plus-02-15"
+  #   tier: "reasoning"
+  #   task_type: "reasoning"
+  #   tool_calls: "1-5"
+  #   context_window: 1000000
+  #   pricing:
+  #     input_per_1m_tokens:  "$0.26"
+  #     output_per_1m_tokens: "$1.56"
+  #   description: >
+  #     Qwen3.5 Plus with 1M token context. Hybrid architecture for efficient inference.
+  #     Strong on coding, long documents, and multimodal tasks within 1-5 tool calls.
+  #   best_for:
+  #     - "Coding tasks: refactor, debug, implement, tests"
+  #     - "Long context: >262K tokens, large documents, transcripts"
+  #     - "Vision + text: image/chart analysis within 1M context"
+  #     - "Multi-step linear ERP operations"
+  #   not_for: >
+  #     Simple greetings or single-entity lookups. Heavy multi-entity orchestration with 2-8 tools. Deep conditional workflows with 5+ tools.
 
-  - id: "openai/gpt-4.1-mini"
-    tier: "reasoning"
-    task_type: "reasoning"
-    tool_calls: "1-5"
-    context_window: 1047576
-    pricing:
-      input_per_1m_tokens:  "$0.40"
-      output_per_1m_tokens: "$1.60"
-    description: >
-      GPT-4.1 Mini by OpenAI. Mid-sized model with strong tool use, coding and
-      instruction-following quality at low latency/cost. 1M context.
-    best_for:
-      - "Tool-driven flows with predictable latency and low cost"
-      - "Interactive coding and structured outputs with 1-5 tool calls"
-      - "Large-context requests up to ~1M tokens"
-    not_for: >
-      Heavy multi-entity orchestration requiring 2-8 tool calls or deeper
-      branching logic; escalate to reasoning+ when required.
+  # - id: "qwen/qwen3.5-397b-a17b"
+  #   tier: "reasoning"
+  #   task_type: "reasoning"
+  #   tool_calls: "1-5"
+  #   context_window: 262144
+  #   pricing:
+  #     input_per_1m_tokens:  "$0.39"
+  #     output_per_1m_tokens: "$2.34"
+  #   description: >
+  #     Qwen3.5 397B-A17B. Reliable reasoning with strong tool robustness.
+  #     Best for routine ERP queries and business operations. 262K context.
+  #   best_for:
+  #     - "Simple ERP queries: totals, lists, state queries"
+  #     - "Single-entity CRUD operations"
+  #     - "Greetings and conversational turns"
+  #     - "Direct Agiweb queries with 1-5 linear tool calls"
+  #   not_for: >
+  #     Long context needs >262K. Multi-entity orchestration requiring 2-8 tools.
+  #     Deep conditional workflows with 5+ tools.
+
+  # - id: "openai/gpt-4.1-mini"
+  #   tier: "reasoning"
+  #   task_type: "reasoning"
+  #   tool_calls: "1-5"
+  #   context_window: 1047576
+  #   pricing:
+  #     input_per_1m_tokens:  "$0.40"
+  #     output_per_1m_tokens: "$1.60"
+  #   description: >
+  #     GPT-4.1 Mini by OpenAI. Mid-sized model with strong tool use, coding and
+  #     instruction-following quality at low latency/cost. 1M context.
+  #   best_for:
+  #     - "Tool-driven flows with predictable latency and low cost"
+  #     - "Interactive coding and structured outputs with 1-5 tool calls"
+  #     - "Large-context requests up to ~1M tokens"
+  #   not_for: >
+  #     Heavy multi-entity orchestration requiring 2-8 tool calls or deeper
+  #     branching logic; escalate to reasoning+ when required.
 
   - id: "moonshotai/kimi-k2.5"
     tier: "reasoning+"
@@ -271,31 +294,31 @@ models:
       Tasks with 1-5 linear tool calls. Budget-sensitive reasoning+ tasks
       where K2.5 offers similar capability at lower cost.
 
-  - id: "xiaomi/mimo-v2-omni"
-    tier: "reasoning+"
-    task_type: "reasoning+"
-    tool_calls: "2-8"
-    context_window: 262144
-    pricing:
-      input_per_1m_tokens:  "$0.40"
-      output_per_1m_tokens: "$2.00"
-    description: >
-      MiMo-V2-Omni by Xiaomi. Frontier omni-modal model with native image, video,
-      and audio understanding, plus strong agentic planning and tool use.
-      262K context.
-    best_for:
-      - "Complex multimodal flows combining text, image, video, and audio"
-      - "Visual grounding and multi-step planning with 2-8 tool calls"
-      - "Agentic coding and tool-driven workflows with rich media context"
-    not_for: >
-      Simple chat or single-entity operations that reasoning-tier models can
-      solve at lower cost and latency.
+  # - id: "xiaomi/mimo-v2-omni"
+  #   tier: "reasoning+"
+  #   task_type: "reasoning+"
+  #   tool_calls: "2-8"
+  #   context_window: 262144
+  #   pricing:
+  #     input_per_1m_tokens:  "$0.40"
+  #     output_per_1m_tokens: "$2.00"
+  #   description: >
+  #     MiMo-V2-Omni by Xiaomi. Frontier omni-modal model with native image, video,
+  #     and audio understanding, plus strong agentic planning and tool use.
+  #     262K context.
+  #   best_for:
+  #     - "Complex multimodal flows combining text, image, video, and audio"
+  #     - "Visual grounding and multi-step planning with 2-8 tool calls"
+  #     - "Agentic coding and tool-driven workflows with rich media context"
+  #   not_for: >
+  #     Simple chat or single-entity operations that reasoning-tier models can
+  #     solve at lower cost and latency.
 
 # =============================================================================
 # FALLBACK MODEL
 # Used when the classifier cannot determine the tier with confidence.
 # =============================================================================
-default_model: "xiaomi/mimo-v2-omni"
+default_model: "factorai/Qwen/Qwen3.6-35B-A3B-FP8"
 
 
 # =============================================================================

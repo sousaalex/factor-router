@@ -33,6 +33,9 @@ Variáveis opcionais (têm default):
     WHISPER_UPSTREAM_TIMEOUT — timeout em segundos para upload/transcrição de áudio
     SPEECH_UPSTREAM_URL — endpoint TTS (factor-speech) para POST /v1/audio/speech
     SPEECH_UPSTREAM_TIMEOUT — timeout em segundos para geração de áudio
+    FACTORAI_VLLM_BASE_URL — opcional: base do FactorAI vLLM local (ex. http://192.168.1.223:8000/v1)
+    FACTORAI_VLLM_API_KEY — opcional: API key do vLLM (default 'EMPTY')
+    FACTORAI_VLLM_TIMEOUT — timeout em segundos para requests ao vLLM (default 120)
     ACCUMULATOR_IDLE_TTL_SECONDS — inatividade máxima do balde (ver accumulator)
     OPENROUTER_MANAGEMENT_API_KEY (opcional), OPENROUTER_CREDITS_* , OPENROUTER_ROUTER_BUDGET_* — créditos / router económico
     GATEWAY_PREMIUM_MODEL + ALLOWLIST + FALLBACK — modelo premium só para alguns users; outros → Kimi (default)
@@ -136,6 +139,22 @@ class Settings(BaseSettings):
         default=180,
         ge=10,
         description="Timeout em segundos para requests de síntese de voz (TTS)",
+    )
+    factorai_vllm_base_url: Optional[str] = Field(
+        default=None,
+        description=(
+            "Base URL do FactorAI vLLM local (ex. http://192.168.1.223:8000/v1). "
+            "Usado para modelos servidos localmente via vLLM."
+        ),
+    )
+    factorai_vllm_api_key: Optional[str] = Field(
+        default="EMPTY",
+        description="API key para o FactorAI vLLM. Default 'EMPTY' (vLLM sem auth).",
+    )
+    factorai_vllm_timeout: int = Field(
+        default=120,
+        ge=10,
+        description="Timeout em segundos para requests ao FactorAI vLLM.",
     )
     openrouter_management_api_key: Optional[str] = Field(
         default=None,
