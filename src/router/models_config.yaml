@@ -118,7 +118,7 @@ models:
   # Direct Agiweb queries, focused CRUD, linear reasoning, code, light VLM
   # ===========================================================================
 
-  - id: "factorai/Qwen/Qwen3.6-35B-A3B-FP8"
+  - id: "factorai/Qwen/Qwen3.6-27B"
     tier: "reasoning"
     task_type: "reasoning"
     tool_calls: "multiple"
@@ -318,7 +318,7 @@ models:
 # FALLBACK MODEL
 # Used when the classifier cannot determine the tier with confidence.
 # =============================================================================
-default_model: "factorai/Qwen/Qwen3.6-35B-A3B-FP8"
+default_model: "factorai/Qwen/Qwen3.6-27B"
 
 
 # =============================================================================
