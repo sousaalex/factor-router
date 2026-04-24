@@ -126,17 +126,22 @@ class TestFactorAIModelConfig:
 
 
 class TestFactorAIFallback:
-    """Testa fallback chain com modelos FactorAI"""
+    """Resiliência do gateway usa o mesmo default_model que models_config.yaml"""
 
-    def test_factorai_in_fallback_chain(self):
-        """Modelo FactorAI está no início da fallback chain"""
-        from src.gateway.resilience import _FALLBACK_CHAIN
+    def test_resilience_fallback_matches_yaml_default(self):
+        import yaml
+        from pathlib import Path
 
-        assert len(_FALLBACK_CHAIN) > 0, "Fallback chain vazia"
-        assert _FALLBACK_CHAIN[0].startswith("factorai/"), \
-            "Modelo FactorAI deve ser o primeiro fallback (custo $0)"
-        assert "qwen3.6-35b-a3b" in _FALLBACK_CHAIN[0], \
-            "Fallback principal deve ser factorai/qwen3.6-35b-a3b"
+        from src.gateway.resilience import get_fallback_model
+        from src.router.router import get_default_model
+
+        yaml_path = Path(__file__).parent.parent / "src" / "router" / "models_config.yaml"
+        with open(yaml_path, encoding="utf-8") as f:
+            config = yaml.safe_load(f)
+
+        assert get_default_model() == config["default_model"]
+        other = "openai/gpt-4.1-mini"
+        assert get_fallback_model(other) == config["default_model"]
 
 
 if __name__ == "__main__":

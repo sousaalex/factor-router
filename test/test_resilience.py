@@ -14,7 +14,6 @@ import pytest
 from src.gateway.resilience import (
     CircuitBreaker,
     _FALLBACK_THRESHOLD,
-    _FALLBACK_CHAIN,
     get_circuit_breaker,
     get_fallback_model,
     record_model_failure,
@@ -23,6 +22,7 @@ from src.gateway.resilience import (
     retry_upstream_call,
     _is_retryable_status,
 )
+from src.router.router import get_default_model
 
 
 class TestCircuitBreaker:
@@ -231,9 +231,9 @@ class TestModelFallback:
         fb = record_model_failure("moonshotai/kimi-k2.5")
         assert fb is None
 
-        # Segunda falha → retorna primeiro fallback na cadeia (factorai)
+        # Segunda falha → default_model do YAML (mesmo que o router sem roteamento)
         fb = record_model_failure("moonshotai/kimi-k2.5")
-        assert fb == "factorai/qwen3.6-35b-a3b"
+        assert fb == get_default_model()
 
     def test_success_resets_counter(self):
         """Sucesso reseta contador de falhas."""
@@ -245,25 +245,13 @@ class TestModelFallback:
         assert fb is None
 
     def test_get_fallback_model(self):
-        """get_fallback_model retorna próximo na cadeia."""
+        """get_fallback_model devolve default_model se o actual é outro."""
+        d = get_default_model()
         fb = get_fallback_model("moonshotai/kimi-k2.5")
-        assert fb == "qwen/qwen3.6-plus"
+        assert fb == d
 
-        fb = get_fallback_model("qwen/qwen3.6-plus")
-        assert fb == "x-ai/grok-4.1-fast"
-
-        fb = get_fallback_model("x-ai/grok-4.1-fast")
-        assert fb == "google/gemini-2.5-flash-lite"
-
-    def test_fallback_chain_order(self):
-        """Cadeia de fallback está na ordem correta."""
-        assert _FALLBACK_CHAIN == [
-            "factorai/qwen3.6-35b-a3b",
-            "moonshotai/kimi-k2.5",
-            "qwen/qwen3.6-plus",
-            "x-ai/grok-4.1-fast",
-            "google/gemini-2.5-flash-lite",
-        ]
+        # Já estamos no default — não há para onde cair
+        assert get_fallback_model(d) is None
 
 
 class TestGlobalCircuitBreaker:

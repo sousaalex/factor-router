@@ -19,6 +19,8 @@ from typing import Any, Callable, Coroutine
 
 import httpx
 
+from src.router.router import get_default_model
+
 logger = logging.getLogger(__name__)
 
 
@@ -188,15 +190,9 @@ async def retry_upstream_call(
 # ─────────────────────────────────────────────────────────────────────────────
 # Model Fallback
 # ─────────────────────────────────────────────────────────────────────────────
-
-# Fallback chain: when a model fails, try these in order
-_FALLBACK_CHAIN: list[str] = [
-    "factorai/qwen3.6-35b-a3b",  # Local fallback primeiro (custo $0)
-    "moonshotai/kimi-k2.5",
-    "qwen/qwen3.6-plus",
-    "x-ai/grok-4.1-fast",
-    "google/gemini-2.5-flash-lite",
-]
+#
+# Alvo de fallback: `default_model` em models_config.yaml (mesmo que o router usa
+# quando o classificador não roteia). Sem cadeia hardcoded neste ficheiro.
 
 # Track consecutive failures per model (for fallback triggering)
 _model_failure_counts: dict[str, int] = {}
@@ -212,25 +208,12 @@ def record_model_failure(model_id: str) -> str | None:
     _model_failure_counts[model_id] = count
     
     if count >= _FALLBACK_THRESHOLD:
-        # Find a fallback that isn't also failing
-        for fb in _FALLBACK_CHAIN:
-            if fb == model_id:
-                continue
-            fb_count = _model_failure_counts.get(fb, 0)
-            if fb_count < _FALLBACK_THRESHOLD:
-                logger.info(
-                    "[ModelFallback] Switching from %s (failed %d times) → %s",
-                    model_id,
-                    count,
-                    fb,
-                )
-                return fb
-        
-        # All fallbacks are also failing — use the first one anyway
-        fallback = _FALLBACK_CHAIN[0] if _FALLBACK_CHAIN else None
+        fallback = get_default_model()
         if fallback and fallback != model_id:
-            logger.warning(
-                "[ModelFallback] All fallbacks failing — using %s anyway",
+            logger.info(
+                "[ModelFallback] Switching from %s (failed %d times) → %s (default_model)",
+                model_id,
+                count,
                 fallback,
             )
             return fallback
@@ -244,16 +227,11 @@ def record_model_success(model_id: str) -> None:
 
 
 def get_fallback_model(current_model: str) -> str | None:
-    """Get the next fallback model in the chain."""
-    try:
-        idx = _FALLBACK_CHAIN.index(current_model)
-        if idx + 1 < len(_FALLBACK_CHAIN):
-            return _FALLBACK_CHAIN[idx + 1]
-    except ValueError:
-        # Current model not in chain — return first fallback
-        pass
-    
-    return _FALLBACK_CHAIN[0] if _FALLBACK_CHAIN else None
+    """Quando o modelo actual falha (ex.: circuit aberto), usa default_model do YAML."""
+    default = get_default_model()
+    if default and default != current_model:
+        return default
+    return None
 
 
 def reset_model_failures(model_id: str | None = None) -> None:

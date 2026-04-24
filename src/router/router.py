@@ -131,6 +131,11 @@ def get_model_info(model_id: str) -> Optional[dict]:
     return None
 
 
+def get_default_model() -> str:
+    """`default_model` em models_config.yaml — classificador em falha e fallback de resiliência do gateway."""
+    return _DEFAULT_MODEL
+
+
 def _classifier_uses_openai_path() -> bool:
     return _CLASSIFIER_API_RAW in ("openai", "v1", "compatible", "openai_compatible")
 
