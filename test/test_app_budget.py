@@ -1,13 +1,24 @@
 """Teto de gasto por app (SaaS): payload 402, PATCH admin para apps já existentes, proxy."""
 from __future__ import annotations
 
+import os
 import unittest
 import uuid
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import status
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
+
+os.environ.setdefault(
+    "MODELS_CONFIG_PATH",
+    str(Path(__file__).resolve().parent.parent / "src" / "router" / "models_config.dev.yaml"),
+)
+os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://user:pass@localhost/db")
+os.environ.setdefault("AUTH0_DOMAIN", "example.auth0.com")
+os.environ.setdefault("AUTH0_AUDIENCE", "https://api.example.local")
+os.environ.setdefault("OPENROUTER_API_DEV", "sk-test-dev")
 
 from src.api.app import app
 from src.api.deps_auth0_admin import require_auth0_admin

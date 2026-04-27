@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+import os
 import uuid
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import Request
+
+os.environ.setdefault(
+    "MODELS_CONFIG_PATH",
+    str(Path(__file__).resolve().parent.parent / "src" / "router" / "models_config.dev.yaml"),
+)
 
 from src.gateway.context import GatewayContext
 from src.gateway.proxy import handle_audio_speech
