@@ -360,7 +360,7 @@ models:
 # FALLBACK MODEL
 # Used when the classifier cannot determine the tier with confidence.
 # =============================================================================
-default_model: "qwen/qwen3.5-plus-20260420"
+default_model: "qwen/qwen3.6-27b"
 
 
 # =============================================================================
