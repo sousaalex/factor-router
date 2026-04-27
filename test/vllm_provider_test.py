@@ -28,7 +28,7 @@ class TestFactorAIProviderResolution:
             factorai_vllm_timeout=120,
         )
 
-        target = resolve_upstream("factorai/qwen3.6-35b-a3b", settings)
+        target = resolve_upstream("moonshotai/kimi-k2.6", settings)
 
         assert target.chat_completions_url == "http://192.168.1.223:8000/v1/chat/completions"
         assert target.api_model == "qwen3.6-35b-a3b"

@@ -1,0 +1,343 @@
+# =============================================================================
+# FACTOR AI — MODEL ROUTING CONFIGURATION
+# =============================================================================
+#
+# PRINCIPLE: Good, Clean, and Cheap
+#   The router does not match keywords. It reasons about SEMANTIC PATTERNS:
+#   - How deep is the reasoning required?
+#   - How many tools will the agent call?
+#   - Is there a Many2one to resolve?
+#   - Does the answer require synthesis across multiple domains?
+#   - What is the cost of an error?
+#
+# TIER LADDER — ordered by capability (cheapest/simplest → most capable)
+# ─────────────────────────────────────────────────────────────────────────────
+#  Tier        │ Tool Calls │ Models                                  │ Output $/M
+#  ────────────┼────────────┼─────────────────────────────────────────┼───────────
+#  simple      │ 0–2        │ (reserved / not yet assigned)           │ —
+#  vl-free     │ 0–4        │ Gemma 4 family (local, $0)              │ $0
+#  reasoning   │ 1–5        │ Coder 480B / 35B VLM / 3.5 Plus 1M / 397B… │ $1.00–$2.34
+#  reasoning+  │ 2–8        │ Kimi K2.5 / Grok 4.1 Fast              │ $0.50–$2.20
+#  complex     │ 5–12       │ GPT-5.4 Mini                            │ $4.50
+#  frontier    │ 10+        │ Premium model for extreme long-horizon   │ $15.00
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# COST ACCOUNTING (gateway → llm_usage_log, no code change when you edit prices):
+#   - pricing.input_per_1m_tokens / output_per_1m_tokens are USD per 1M tokens.
+#   - $0 / $0 is valid: cost center still records prompt_tokens, completion_tokens,
+#     total_tokens, and snapshots input_price_per_1m / output_price_per_1m; total_cost_usd is 0.
+#   - When you later set non-zero rates, new turns use the updated YAML automatically
+#     via get_model_info → record_turn_usage.
+# =============================================================================
+
+models:
+
+  # ===========================================================================
+  # TIER: vl-free  │ tool_calls: 0–4  │ Cost: $0 (local)
+  # Gemma 4 family — multimodal, edge/workstation, zero billing cost
+  # ===========================================================================
+
+  # - id: "ollama/gemma4:e2b"
+  #   tier: "vl-free"
+  #   task_type: "vl-free"
+  #   tool_calls: "0-4"
+  #   context_window: 128000
+  #   pricing:
+  #     input_per_1m_tokens:  "$0"
+  #     output_per_1m_tokens: "$0"
+  #   description: >
+  #     Gemma 4 E2B (~2.3B effective parameters). Multimodal: text, image, audio.
+  #     Fastest and lightest in the Gemma 4 line. Built for high-throughput turns
+  #     under tight latency/memory with modern agent and coding skills for its class.
+  #     Use when a reasoning-tier model is unnecessary and local execution is available.
+  #   best_for:
+  #     - "Simple multimodal queries (text + image/audio) with 0-4 tool calls"
+  #     - "High-throughput turns where full dense 8B+ footprint is unnecessary"
+  #     - "Zero-cost local execution on edge hardware or laptops"
+  #   not_for: >
+  #     Deep reasoning, complex Many2one resolution, or tasks that require
+  #     synthesis across multiple domains; step up to E4B or higher.
+
+  # - id: "ollama/gemma4:e4b"
+  #   tier: "vl-free"
+  #   task_type: "vl-free"
+  #   tool_calls: "0-4"
+  #   context_window: 128000
+  #   pricing:
+  #     input_per_1m_tokens:  "$0"
+  #     output_per_1m_tokens: "$0"
+  #   description: >
+  #     Gemma 4 E4B (~4.5B effective parameters). Same 128K context and multimodal
+  #     stack (text, image, audio) as E2B but with stronger reasoning and coding
+  #     headroom. Preferred vl-free default when E2B headroom is insufficient.
+  #   best_for:
+  #     - "Vl-free tasks needing more synthesis depth than E2B, still within 0-4 tools"
+  #     - "Edge-class hardware with audio and vision in the loop"
+  #   not_for: >
+  #     Workloads needing 256K context or MoE-scale capacity; prefer gemma4:26b or above.
+
+  # - id: "ollama/gemma4:26b"
+  #   tier: "vl-free"
+  #   task_type: "vl-free"
+  #   tool_calls: "0-4"
+  #   context_window: 262144
+  #   pricing:
+  #     input_per_1m_tokens:  "$0"
+  #     output_per_1m_tokens: "$0"
+  #   description: >
+  #     Gemma 4 26B MoE. 256K context, multimodal text + image. Large total parameter
+  #     count with efficient active compute; workstation-class local execution with
+  #     frontier-leaning scores for reasoning, coding, and agents at this cost tier.
+  #   best_for:
+  #     - "Long-context (up to 256K) vl-free reasoning with 0-4 tool calls"
+  #     - "Heavy coding or multi-step agents where MoE efficiency matters"
+  #   not_for: >
+  #     When the dense 31B profile or a paid complex-tier model is the better semantic fit.
+
+  # - id: "ollama/gemma4:31b"
+  #   tier: "vl-free"
+  #   task_type: "vl-free"
+  #   tool_calls: "0-4"
+  #   context_window: 262144
+  #   pricing:
+  #     input_per_1m_tokens:  "$0"
+  #     output_per_1m_tokens: "$0"
+  #   description: >
+  #     Gemma 4 31B dense — top of the workstation Gemma 4 line. 256K context,
+  #     multimodal text + image. Maximum local depth for long documents, demanding
+  #     coding, and intricate tool orchestration before moving to paid tiers.
+  #   best_for:
+  #     - "Hardest local workloads: long coherent context, demanding synthesis, strong tool chains"
+  #     - "When only the largest dense Gemma 4 variant is appropriate"
+  #   not_for: >
+  #     When a paid complex-tier model better matches cost, policy, or benchmark
+  #     needs for the same task shape.
+
+  # ===========================================================================
+  # TIER: reasoning  │ tool_calls: 1–5  │ Cost: ~$1.00–$2.34 output/M (by model); Plus 1M @ $1.56
+  # Direct Agiweb queries, focused CRUD, linear reasoning, code, light VLM
+  # ===========================================================================
+
+  - id: "factorai/Qwen/Qwen3.6-27B-FP8"
+    tier: "reasoning"
+    task_type: "reasoning"
+    tool_calls: "1-5"
+    context_window: 131072
+    pricing:
+      input_per_1m_tokens: "$0.80"
+      output_per_1m_tokens: "$2.40"
+    description: >
+      Qwen3.6-27B-FP8 is a 27B dense model from the Qwen 3.6 family, optimized for
+      coding, reasoning, and agentic workflows. Native context window is 131,072 tokens.
+      Supports text and vision inputs, and performs well in repository-level coding tasks
+      with consistent quality/cost for reasoning-tier routing.
+    best_for:
+      - "Agentic coding and tool-using workflows (CLI/IDE, 1-5 tool calls)"
+      - "Repository-level implementation, debugging, and refactoring"
+      - "Reasoning tasks needing stronger coding quality than chat-tier models"
+    not_for: >
+      Extremely long-horizon or highly ambiguous workflows with deep branching and
+      broad cross-domain synthesis; escalate to larger reasoning+/complex-tier models.
+    provider: "factorai"
+    is_local: true
+
+  # - id: "factorai/Qwen/Qwen3-Coder-Next-FP8"
+  #   tier: "reasoning"
+  #   task_type: "reasoning"
+  #   tool_calls: "1-5"
+  #   context_window: 262144
+  #   pricing:
+  #     input_per_1m_tokens: "$0.15"
+  #     output_per_1m_tokens: "$0.80"
+  #   description: >
+  #     Qwen3-Coder-Next (80B MoE, ~3B active) optimized for agentic coding and real-world
+  #     development workflows. Designed for long-horizon tasks, tool usage, and iterative
+  #     execution loops. Performs reliably in CLI/IDE environments and integrates well with
+  #     agent scaffolds. Trades some deep reasoning capability for significantly improved
+  #     efficiency and cost-performance. Native 256k context. No <think> output.
+  #   best_for:
+  #     - "Agentic coding with tool usage (CLI, IDE, multi-step execution)"
+  #     - "Long-running coding agents with cost constraints"
+  #     - "Local or always-on deployment scenarios"
+  #     - "Recovery from execution errors and iterative development loops"
+  #   not_for: >
+      
+  #   provider: "factoai"
+  #   is_local: true
+  
+
+  # - id: "qwen/qwen3.6-plus"
+  #   tier: "reasoning"
+  #   task_type: "reasoning"
+  #   tool_calls: "1-5"
+  #   context_window: 1000000
+  #   pricing:
+  #     input_per_1m_tokens:  "$0.325"
+  #     output_per_1m_tokens: "$1.95"
+  #   description: >
+  #     Qwen3.6 Plus by Qwen. Hybrid linear attention + sparse mixture-of-experts routing.
+  #     Compared to the 3.5 series, it brings major gains in agentic coding, front-end
+  #     development, and overall reasoning, with a significantly improved vibe-coding
+  #     experience. Strong on complex tasks such as 3D scenes, games, and repository-level
+  #     problem solving (SWE-bench Verified 78.8). 1,000,000 context. $0.325/$1.95 per
+  #     1M tokens.
+  #   best_for:
+  #     - "Reasoning-tier tasks with stronger coding output and robust cost control"
+  #     - "Agentic coding, front-end implementation, and repository-level problem solving"
+  #     - "Operational Agiweb turns that need higher capability than chat-tier models"
+  #   not_for: >
+  #     Long-horizon workflows with high ambiguity, deep conditional orchestration,
+  #     or broad cross-entity synthesis; escalate to 397B, Kimi, or complex tier as needed.
+
+  # - id: "qwen/qwen3.5-plus-02-15"
+  #   tier: "reasoning"
+  #   task_type: "reasoning"
+  #   tool_calls: "1-5"
+  #   context_window: 1000000
+  #   pricing:
+  #     input_per_1m_tokens:  "$0.26"
+  #     output_per_1m_tokens: "$1.56"
+  #   description: >
+  #     Qwen3.5 Plus with 1M token context. Hybrid architecture for efficient inference.
+  #     Strong on coding, long documents, and multimodal tasks within 1-5 tool calls.
+  #   best_for:
+  #     - "Coding tasks: refactor, debug, implement, tests"
+  #     - "Long context: >262K tokens, large documents, transcripts"
+  #     - "Vision + text: image/chart analysis within 1M context"
+  #     - "Multi-step linear ERP operations"
+  #   not_for: >
+  #     Simple greetings or single-entity lookups. Heavy multi-entity orchestration with 2-8 tools. Deep conditional workflows with 5+ tools.
+
+  # - id: "qwen/qwen3.5-397b-a17b"
+  #   tier: "reasoning"
+  #   task_type: "reasoning"
+  #   tool_calls: "1-5"
+  #   context_window: 262144
+  #   pricing:
+  #     input_per_1m_tokens:  "$0.39"
+  #     output_per_1m_tokens: "$2.34"
+  #   description: >
+  #     Qwen3.5 397B-A17B. Reliable reasoning with strong tool robustness.
+  #     Best for routine ERP queries and business operations. 262K context.
+  #   best_for:
+  #     - "Simple ERP queries: totals, lists, state queries"
+  #     - "Single-entity CRUD operations"
+  #     - "Greetings and conversational turns"
+  #     - "Direct Agiweb queries with 1-5 linear tool calls"
+  #   not_for: >
+  #     Long context needs >262K. Multi-entity orchestration requiring 2-8 tools.
+  #     Deep conditional workflows with 5+ tools.
+
+  # - id: "openai/gpt-4.1-mini"
+  #   tier: "reasoning"
+  #   task_type: "reasoning"
+  #   tool_calls: "1-5"
+  #   context_window: 1047576
+  #   pricing:
+  #     input_per_1m_tokens:  "$0.40"
+  #     output_per_1m_tokens: "$1.60"
+  #   description: >
+  #     GPT-4.1 Mini by OpenAI. Mid-sized model with strong tool use, coding and
+  #     instruction-following quality at low latency/cost. 1M context.
+  #   best_for:
+  #     - "Tool-driven flows with predictable latency and low cost"
+  #     - "Interactive coding and structured outputs with 1-5 tool calls"
+  #     - "Large-context requests up to ~1M tokens"
+  #   not_for: >
+  #     Heavy multi-entity orchestration requiring 2-8 tool calls or deeper
+  #     branching logic; escalate to reasoning+ when required.
+
+  - id: "moonshotai/kimi-k2.5"
+    tier: "reasoning+"
+    task_type: "reasoning+"
+    tool_calls: "2-8"
+    context_window: 262144
+    pricing:
+      input_per_1m_tokens:  "$0.45"
+      output_per_1m_tokens: "$2.20"
+    description: >
+      Kimi K2.5. Multi-step agentic tool-calling with Many2one resolution and
+      cross-entity synthesis. 262K context.
+    best_for:
+      - "Many2one resolution with multi-step orchestration"
+      - "Cross-entity aggregation: totals by client AND product"
+      - "2-8 tool calls requiring multi-model synthesis"
+      - "Visual coding coupled to screenshots/charts"
+    not_for: >
+      Simple queries or single-entity operations. Greetings and chat.
+      Tasks with 1-5 linear tool calls.
+
+  - id: "moonshotai/kimi-k2.6"
+    tier: "reasoning+"
+    task_type: "reasoning+"
+    tool_calls: "2-8"
+    context_window: 262144
+    pricing:
+      input_per_1m_tokens:  "$0.60"
+      output_per_1m_tokens: "$2.80"
+    description: >
+      Kimi K2.6 by Moonshot AI. Next-generation multimodal model for long-horizon
+      coding, coding-driven UI/UX generation, and multi-agent orchestration.
+      Handles complex end-to-end coding tasks across Python, Rust, and Go.
+      Agent swarm architecture scales to hundreds of parallel sub-agents for
+      autonomous task decomposition. 262K context.
+    best_for:
+      - "Long-horizon coding tasks across multiple languages (Python, Rust, Go)"
+      - "Coding-driven UI/UX generation from prompts and visual inputs"
+      - "Multi-agent orchestration with autonomous task decomposition"
+      - "Complex end-to-end workflows requiring agent swarm architecture"
+      - "Production-ready interface generation from visual inputs"
+    not_for: >
+      Simple queries or single-entity operations. Greetings and chat.
+      Tasks with 1-5 linear tool calls. Budget-sensitive reasoning+ tasks
+      where K2.5 offers similar capability at lower cost.
+
+  # - id: "xiaomi/mimo-v2-omni"
+  #   tier: "reasoning+"
+  #   task_type: "reasoning+"
+  #   tool_calls: "2-8"
+  #   context_window: 262144
+  #   pricing:
+  #     input_per_1m_tokens:  "$0.40"
+  #     output_per_1m_tokens: "$2.00"
+  #   description: >
+  #     MiMo-V2-Omni by Xiaomi. Frontier omni-modal model with native image, video,
+  #     and audio understanding, plus strong agentic planning and tool use.
+  #     262K context.
+  #   best_for:
+  #     - "Complex multimodal flows combining text, image, video, and audio"
+  #     - "Visual grounding and multi-step planning with 2-8 tool calls"
+  #     - "Agentic coding and tool-driven workflows with rich media context"
+  #   not_for: >
+  #     Simple chat or single-entity operations that reasoning-tier models can
+  #     solve at lower cost and latency.
+
+# =============================================================================
+# FALLBACK MODEL
+# Used when the classifier cannot determine the tier with confidence.
+# =============================================================================
+default_model: "moonshotai/kimi-k2.6"
+
+
+# =============================================================================
+# PRICING SUMMARY — ordered by output cost (cheapest → most expensive)
+# =============================================================================
+#
+#  Tier        │ Model                           │ Context │ Input /1M │ Output /1M
+#  ────────────┼─────────────────────────────────┼─────────┼───────────┼───────────
+#  vl-free     │ ollama/gemma4:e2b               │ 128K    │ $0        │ $0
+#  vl-free     │ ollama/gemma4:e4b               │ 128K    │ $0        │ $0
+#  vl-free     │ ollama/gemma4:26b               │ 256K    │ $0        │ $0
+#  vl-free     │ ollama/gemma4:31b               │ 256K    │ $0        │ $0
+#  reasoning+  │ x-ai/grok-4.1-fast              │ 2M      │ $0.20     │ $0.50
+#  (removed)   │ qwen/qwen3-coder                │ 262K    │ $0.22     │ $1.00
+#  reasoning   │ qwen/qwen3.5-35b-a3b            │ 262K    │ $0.1625   │ $1.30
+#  reasoning   │ x-ai/grok-code-fast-1           │ 256K    │ $0.20     │ $1.50
+#  reasoning   │ qwen/qwen3.6-plus               │ 1M      │ $0.325    │ $1.95
+#  reasoning+  │ moonshotai/kimi-k2.5            │ 262K    │ $0.45     │ $2.20
+#  reasoning+  │ moonshotai/kimi-k2.6            │ 262K    │ $0.60     │ $2.80
+#  reasoning   │ qwen/qwen3.5-397b-a17b          │ 262K    │ $0.39     │ $2.34
+#  complex     │ openai/gpt-5.4-mini             │ 400K    │ $0.75     │ $4.50
+#  frontier    │ openai/gpt-5.4-mini             │ 400K    │ $0.75     │ $4.50
+#
+# =============================================================================

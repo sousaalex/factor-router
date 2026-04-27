@@ -56,7 +56,11 @@ CLASSIFIER_TIMEOUT = float(os.getenv("CLASSIFIER_TIMEOUT_SECONDS", "2.0"))
 # native → POST /api/chat (Ollama). openai → POST /v1/chat/completions (Ollama recente, LM Studio, etc.)
 _CLASSIFIER_API_RAW = (os.getenv("OLLAMA_CLASSIFIER_API") or "native").strip().lower()
 
-CONFIG_PATH = Path(__file__).parent / "models_config.yaml"
+_MODELS_CONFIG_ENV = os.getenv("MODELS_CONFIG_PATH", "").strip()
+if _MODELS_CONFIG_ENV:
+    CONFIG_PATH = Path(_MODELS_CONFIG_ENV)
+else:
+    CONFIG_PATH = Path(__file__).parent / "models_config.yaml"
 
 
 def _load_config() -> dict:

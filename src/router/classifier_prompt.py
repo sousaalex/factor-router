@@ -58,7 +58,7 @@ DECISION RULES:
 
 RESPONSE FORMAT:
 Reply with ONLY: {{"model": "model_id"}}
-Example: {{"model": "factorai/qwen3.6-35b-a3b"}}
+Example: {{"model": "moonshotai/kimi-k2.6"}}
 NO explanation, NO markdown, ONLY the JSON.
 """
 
@@ -75,6 +75,27 @@ Choose the best model from the list above.
 Reply with ONLY: {{"model": "model_id"}}"""
 
 
+def _render_models_catalog(models: list[dict]) -> str:
+    """Render a strict allow-list of model IDs for the classifier."""
+    lines: list[str] = []
+    for model in models:
+        model_id = str(model.get("id") or "").strip()
+        if not model_id:
+            continue
+        tier = str(model.get("tier") or "unknown").strip()
+        lines.append(f"- {model_id} (tier: {tier})")
+
+    catalog = "\n".join(lines) if lines else "- (no models configured)"
+    return (
+        "ALLOWED MODEL IDS (STRICT):\n"
+        f"{catalog}\n\n"
+        "IMPORTANT:\n"
+        "- You MUST return one model_id EXACTLY from ALLOWED MODEL IDS.\n"
+        "- Never invent model names.\n"
+        "- If uncertain, choose the safest general-purpose model from ALLOWED MODEL IDS.\n"
+    )
+
+
 def build_classifier_prompt(
     user_message: str,
     models: list[dict],
@@ -89,7 +110,8 @@ def build_classifier_prompt(
 
     All neural-facing text is English.
     """
-    system = CLASSIFIER_SYSTEM_PROMPT
+    catalog_block = _render_models_catalog(models)
+    system = CLASSIFIER_SYSTEM_PROMPT + "\n\n" + catalog_block
     if openrouter_balance_low:
         system = system + "\n" + LOW_BUDGET_BLOCK.strip() + "\n"
 

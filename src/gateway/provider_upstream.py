@@ -73,7 +73,7 @@ def resolve_upstream(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail={
                     "error": "invalid_factorai_model",
-                    "message": "ID inválido: use factorai/<nome> (ex. factorai/qwen3.6-35b-a3b).",
+                    "message": "ID inválido: use factorai/<nome>.",
                 },
             )
         api_key = (settings.factorai_vllm_api_key or "EMPTY").strip()
