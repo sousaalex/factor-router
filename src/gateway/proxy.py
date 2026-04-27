@@ -1210,6 +1210,16 @@ async def handle_audio_speech(
     logger.info(f"[AudioSpeech] Content-Type: {content_type}")
     logger.info(f"[AudioSpeech] Method: {request.method}")
 
+    if not content_type.lower().startswith("application/json"):
+        logger.error(f"[AudioSpeech] Invalid Content-Type: {content_type}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "invalid_content_type",
+                "message": f"Content-Type must be application/json, got: {content_type}",
+            },
+        )
+
     # Parse JSON body
     try:
         body = await request.json()
