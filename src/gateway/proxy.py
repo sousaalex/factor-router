@@ -178,6 +178,87 @@ def _classify_upstream_error(status_code: int, upstream_text: str) -> str:
     return "upstream_error"
 
 
+def _sse_data_event(payload: dict) -> bytes:
+    """Serializa um evento SSE `data:` com JSON válido."""
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n".encode("utf-8")
+
+
+def _sse_done_event() -> bytes:
+    """Evento SSE de fim de stream."""
+    return b"data: [DONE]\n\n"
+
+
+def _build_non_sse_stream_payload(
+    *,
+    upstream_status: int,
+    upstream_content_type: str,
+    upstream_text: str,
+    model_id: str,
+) -> dict:
+    """
+    Constrói um payload SSE seguro quando o upstream não devolve `text/event-stream`.
+    Se o upstream devolveu uma resposta JSON completa, tentamos preservá-la como um
+    único chunk SSE. Caso contrário, devolvemos um erro normalizado.
+    """
+    try:
+        parsed = json.loads(upstream_text)
+    except json.JSONDecodeError:
+        parsed = None
+
+    if isinstance(parsed, dict):
+        choices = parsed.get("choices") or []
+        if choices:
+            first_choice = choices[0] if isinstance(choices[0], dict) else {}
+            message = first_choice.get("message") or {}
+            content = message.get("content")
+            if isinstance(content, str) and content:
+                chunk: dict = {
+                    "id": parsed.get("id"),
+                    "object": "chat.completion.chunk",
+                    "created": parsed.get("created") or int(time.time()),
+                    "model": parsed.get("model") or model_id,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {"content": content},
+                            "finish_reason": first_choice.get("finish_reason") or "stop",
+                        }
+                    ],
+                }
+                usage = parsed.get("usage")
+                if isinstance(usage, dict):
+                    chunk["usage"] = usage
+                return {
+                    "kind": "chunk",
+                    "chunk": chunk,
+                }
+
+        payload = {
+            "error": "upstream_non_sse_response",
+            "message": "Upstream returned JSON instead of SSE during a streaming request.",
+            "upstream_status": upstream_status,
+            "upstream_content_type": upstream_content_type or "unknown",
+            "upstream_body": upstream_text[:500],
+        }
+        if "error" in parsed:
+            payload["upstream_error"] = parsed["error"]
+        return {
+            "kind": "error",
+            "payload": payload,
+        }
+
+    return {
+        "kind": "error",
+        "payload": {
+            "error": "upstream_non_sse_response",
+            "message": "Upstream returned a non-SSE response during a streaming request.",
+            "upstream_status": upstream_status,
+            "upstream_content_type": upstream_content_type or "unknown",
+            "upstream_body": upstream_text[:500],
+        },
+    }
+
+
 
 
 
@@ -356,48 +437,76 @@ async def _proxy_stream(
                     cb.record_success(model_id)
                     record_model_success(model_id)
 
+                    content_type = (upstream.headers.get("content-type") or "").lower()
+                    if "text/event-stream" not in content_type:
+                        raw_body = await upstream.aread()
+                        raw_text = raw_body.decode("utf-8", errors="replace").strip()
+                        non_sse = _build_non_sse_stream_payload(
+                            upstream_status=upstream.status_code,
+                            upstream_content_type=content_type,
+                            upstream_text=raw_text,
+                            model_id=model_id,
+                        )
+                        if non_sse["kind"] == "chunk":
+                            yield _sse_data_event(non_sse["chunk"])
+                            yield _sse_done_event()
+                        else:
+                            yield _sse_data_event(non_sse["payload"])
+                        return
+
                     bid = ctx.accumulator_bucket_id
                     await accumulator.touch_activity(bid)
                     last_stream_touch = time.monotonic()
 
-                    async for raw_line in upstream.aiter_lines():
-                        if not raw_line:
-                            yield b"\n"
-                            continue
-
+                    # Buffer para reconstruir linhas SSE a partir de bytes brutos.
+                    # aiter_lines() faz decode UTF-8 (perde bytes inválidos → "???")
+                    # e adiciona \n\n a cada linha, corrompendo o formato SSE original.
+                    # aiter_bytes() preserva os bytes exatos do upstream.
+                    sse_buffer = b""
+                    async for chunk in upstream.aiter_bytes():
                         now = time.monotonic()
                         if now - last_stream_touch >= 15:
                             last_stream_touch = now
                             await accumulator.touch_activity(bid)
 
-                        # Passa o chunk ao agente imediatamente
-                        yield (raw_line + "\n\n").encode()
+                        # Passa os bytes brutos ao cliente imediatamente (pass-through fiel)
+                        yield chunk
 
-                        # Tenta extrair tokens do chunk
-                        if raw_line.startswith("data: "):
-                            data_str = raw_line[6:].strip()
-                            if data_str == "[DONE]":
-                                continue  # fim do stream SSE
-                            try:
-                                chunk_data = json.loads(data_str)
-                                p, c, t = _extract_usage_from_chunk(chunk_data)
-                                total_prompt     += p
-                                total_completion += c
+                        # Acumula no buffer para extração de tokens
+                        sse_buffer += chunk
 
-                                # Rastreia índices únicos de tool_calls no stream
-                                # Cada tool_call tem um índice único — mesmo que venha
-                                # fragmentada em muitos chunks, o índice não muda
-                                choices = chunk_data.get("choices") or []
-                                for choice in choices:
-                                    delta = choice.get("delta") or {}
-                                    for tc in (delta.get("tool_calls") or []):
-                                        idx = tc.get("index")
-                                        if idx is not None:
-                                            tool_call_indices.add(idx)
-                                total_tool_calls = len(tool_call_indices)
+                        # Processa linhas completas do buffer (separadas por \n)
+                        while b"\n" in sse_buffer:
+                            line, sse_buffer = sse_buffer.split(b"\n", 1)
+                            line_str = line.decode("utf-8", errors="replace").strip()
 
-                            except json.JSONDecodeError:
-                                pass
+                            if not line_str:
+                                continue
+
+                            if line_str.startswith("data: "):
+                                data_str = line_str[6:].strip()
+                                if data_str == "[DONE]":
+                                    continue  # fim do stream SSE
+                                try:
+                                    chunk_data = json.loads(data_str)
+                                    p, c, t = _extract_usage_from_chunk(chunk_data)
+                                    total_prompt     += p
+                                    total_completion += c
+
+                                    # Rastreia índices únicos de tool_calls no stream
+                                    # Cada tool_call tem um índice único — mesmo que venha
+                                    # fragmentada em muitos chunks, o índice não muda
+                                    choices = chunk_data.get("choices") or []
+                                    for choice in choices:
+                                        delta = choice.get("delta") or {}
+                                        for tc in (delta.get("tool_calls") or []):
+                                            idx = tc.get("index")
+                                            if idx is not None:
+                                                tool_call_indices.add(idx)
+                                    total_tool_calls = len(tool_call_indices)
+
+                                except json.JSONDecodeError:
+                                    pass
 
         except httpx.TimeoutException:
             #print("Timeout no upstream para turno [%s]", ctx.turn_id[:8])
@@ -791,7 +900,6 @@ async def handle_chat_completions(
                     fallback,
                 )
                 model_id = fallback
-                upstream_body["model"] = model_id
                 await accumulator.set_bucket_model_id(bid, model_id)
 
     # FIX: Modelos Qwen/Alibaba rejeitam function.arguments vazio ou não-JSON.
