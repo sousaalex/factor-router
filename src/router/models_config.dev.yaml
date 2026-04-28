@@ -124,20 +124,19 @@ models:
     tool_calls: "1-5"
     context_window: 131072
     pricing:
-      input_per_1m_tokens: "$0.80"
-      output_per_1m_tokens: "$2.40"
+      input_per_1m_tokens: "$0.10"
+      output_per_1m_tokens: "$1.00"
     description: >
-      Qwen3.6-27B-FP8 is a 27B dense model from the Qwen 3.6 family, optimized for
-      coding, reasoning, and agentic workflows. Native context window is 131,072 tokens.
-      Supports text and vision inputs, and performs well in repository-level coding tasks
-      with consistent quality/cost for reasoning-tier routing.
+      Qwen3.6 27B is a dense 27B-parameter model from the Qwen team (Alibaba),
+      designed for coding, reasoning, and agentic workflows. Supports text, image,
+      and video inputs, with a native context window of 262,144 tokens.
     best_for:
-      - "Agentic coding and tool-using workflows (CLI/IDE, 1-5 tool calls)"
-      - "Repository-level implementation, debugging, and refactoring"
-      - "Reasoning tasks needing stronger coding quality than chat-tier models"
+      - "Agentic coding and multi-step reasoning with 1-5 tool calls"
+      - "Repository-level code comprehension, implementation, and refactoring"
+      - "Front-end development workflows and structured problem solving"
     not_for: >
-      Extremely long-horizon or highly ambiguous workflows with deep branching and
-      broad cross-domain synthesis; escalate to larger reasoning+/complex-tier models.
+      Extremely long-horizon workflows with deep branching and broad cross-entity
+      synthesis that need reasoning+ or complex-tier models.
     provider: "factorai"
     is_local: true
 
