@@ -290,50 +290,50 @@ models:
   #     Heavy multi-entity orchestration requiring 2-8 tool calls or deeper
   #     branching logic; escalate to reasoning+ when required.
 
-  - id: "moonshotai/kimi-k2.5"
-    tier: "reasoning+"
-    task_type: "reasoning+"
-    tool_calls: "2-8"
-    context_window: 262144
-    pricing:
-      input_per_1m_tokens:  "$0.45"
-      output_per_1m_tokens: "$2.20"
-    description: >
-      Kimi K2.5. Multi-step agentic tool-calling with Many2one resolution and
-      cross-entity synthesis. 262K context.
-    best_for:
-      - "Many2one resolution with multi-step orchestration"
-      - "Cross-entity aggregation: totals by client AND product"
-      - "2-8 tool calls requiring multi-model synthesis"
-      - "Visual coding coupled to screenshots/charts"
-    not_for: >
-      Simple queries or single-entity operations. Greetings and chat.
-      Tasks with 1-5 linear tool calls.
-
-  # - id: "moonshotai/kimi-k2.6"
+  # - id: "moonshotai/kimi-k2.5"
   #   tier: "reasoning+"
   #   task_type: "reasoning+"
   #   tool_calls: "2-8"
   #   context_window: 262144
   #   pricing:
-  #     input_per_1m_tokens:  "$0.60"
-  #     output_per_1m_tokens: "$2.80"
+  #     input_per_1m_tokens:  "$0.45"
+  #     output_per_1m_tokens: "$2.20"
   #   description: >
-  #     Kimi K2.6 by Moonshot AI. Next-generation multimodal model for long-horizon
-  #     coding, coding-driven UI/UX generation, and multi-agent orchestration.
-  #     Handles complex end-to-end coding tasks across Python, Rust, and Go.
-  #     Agent swarm architecture scales to hundreds of parallel sub-agents for
-  #     autonomous task decomposition. 262K context.
+  #     Kimi K2.5. Multi-step agentic tool-calling with Many2one resolution and
+  #     cross-entity synthesis. 262K context.
   #   best_for:
-  #     - "Long-horizon coding tasks across multiple languages (Python, Rust, Go)"
-  #     - "Coding-driven UI/UX generation from prompts and visual inputs"
-  #     - "Multi-agent orchestration with autonomous task decomposition"
-  #     - "Complex end-to-end workflows requiring agent swarm architecture"
-  #     - "Production-ready interface generation from visual inputs"
+  #     - "Many2one resolution with multi-step orchestration"
+  #     - "Cross-entity aggregation: totals by client AND product"
+  #     - "2-8 tool calls requiring multi-model synthesis"
+  #     - "Visual coding coupled to screenshots/charts"
   #   not_for: >
   #     Simple queries or single-entity operations. Greetings and chat.
-  #     Tasks with 1-5 linear tool calls. Budget-sensitive reasoning+ tasks
-  #     where K2.5 offers similar capability at lower cost.
+  #     Tasks with 1-5 linear tool calls.
+
+  - id: "moonshotai/kimi-k2.6"
+    tier: "reasoning+"
+    task_type: "reasoning+"
+    tool_calls: "2-8"
+    context_window: 262144
+    pricing:
+      input_per_1m_tokens:  "$0.60"
+      output_per_1m_tokens: "$2.80"
+    description: >
+      Kimi K2.6 by Moonshot AI. Next-generation multimodal model for long-horizon
+      coding, coding-driven UI/UX generation, and multi-agent orchestration.
+      Handles complex end-to-end coding tasks across Python, Rust, and Go.
+      Agent swarm architecture scales to hundreds of parallel sub-agents for
+      autonomous task decomposition. 262K context.
+    best_for:
+      - "Long-horizon coding tasks across multiple languages (Python, Rust, Go)"
+      - "Coding-driven UI/UX generation from prompts and visual inputs"
+      - "Multi-agent orchestration with autonomous task decomposition"
+      - "Complex end-to-end workflows requiring agent swarm architecture"
+      - "Production-ready interface generation from visual inputs"
+    not_for: >
+      Simple queries or single-entity operations. Greetings and chat.
+      Tasks with 1-5 linear tool calls. Budget-sensitive reasoning+ tasks
+      where K2.5 offers similar capability at lower cost.
 
   # - id: "xiaomi/mimo-v2-omni"
   #   tier: "reasoning+"
