@@ -140,49 +140,49 @@ models:
   #   provider: "factorai"
   #   is_local: true
 
-  - id: "qwen/qwen3.6-27b"
-    tier: "reasoning"
-    task_type: "reasoning"
-    tool_calls: "1-5"
-    context_window: 262144
-    pricing:
-      input_per_1m_tokens: "$0.195"
-      output_per_1m_tokens: "$1.56"
-    description: >
-      Qwen3.6 27B is a dense 27B-parameter model from the Qwen team (Alibaba),
-      designed for coding, reasoning, and agentic workflows. Supports text, image,
-      and video inputs, with a native context window of 262,144 tokens.
-    best_for:
-      - "Agentic coding and multi-step reasoning with 1-5 tool calls"
-      - "Repository-level code comprehension, implementation, and refactoring"
-      - "Front-end development workflows and structured problem solving"
-    not_for: >
-      Extremely long-horizon workflows with deep branching and broad cross-entity
-      synthesis that need reasoning+ or complex-tier models.
-    provider: "qwen"
-    is_local: false
+  # - id: "qwen/qwen3.6-27b"
+  #   tier: "reasoning"
+  #   task_type: "reasoning"
+  #   tool_calls: "1-5"
+  #   context_window: 262144
+  #   pricing:
+  #     input_per_1m_tokens: "$0.195"
+  #     output_per_1m_tokens: "$1.56"
+  #   description: >
+  #     Qwen3.6 27B is a dense 27B-parameter model from the Qwen team (Alibaba),
+  #     designed for coding, reasoning, and agentic workflows. Supports text, image,
+  #     and video inputs, with a native context window of 262,144 tokens.
+  #   best_for:
+  #     - "Agentic coding and multi-step reasoning with 1-5 tool calls"
+  #     - "Repository-level code comprehension, implementation, and refactoring"
+  #     - "Front-end development workflows and structured problem solving"
+  #   not_for: >
+  #     Extremely long-horizon workflows with deep branching and broad cross-entity
+  #     synthesis that need reasoning+ or complex-tier models.
+  #   provider: "qwen"
+  #   is_local: false
 
-  - id: "qwen/qwen3.5-plus-20260420"
-    tier: "reasoning"
-    task_type: "reasoning"
-    tool_calls: "1-5"
-    context_window: 1000000
-    pricing:
-      input_per_1m_tokens: "$0.40"
-      output_per_1m_tokens: "$2.40"
-    description: >
-      Qwen3.5 Plus (2026-04-20) is an updated large-scale multimodal model from
-      Alibaba. Supports text, image, and video input with text output and a
-      1,000,000 token context window, including tiered pricing above 256K tokens.
-    best_for:
-      - "Long-context tasks (up to 1M tokens) with 1-5 tool calls"
-      - "Multimodal reasoning with text + image + video inputs"
-      - "Complex coding and analysis when 262K context is insufficient"
-    not_for: >
-      Simple short-context tasks where lower-cost local or smaller reasoning models
-      are sufficient.
-    provider: "qwen"
-    is_local: false
+  # - id: "qwen/qwen3.5-plus-20260420"
+  #   tier: "reasoning"
+  #   task_type: "reasoning"
+  #   tool_calls: "1-5"
+  #   context_window: 1000000
+  #   pricing:
+  #     input_per_1m_tokens: "$0.40"
+  #     output_per_1m_tokens: "$2.40"
+  #   description: >
+  #     Qwen3.5 Plus (2026-04-20) is an updated large-scale multimodal model from
+  #     Alibaba. Supports text, image, and video input with text output and a
+  #     1,000,000 token context window, including tiered pricing above 256K tokens.
+  #   best_for:
+  #     - "Long-context tasks (up to 1M tokens) with 1-5 tool calls"
+  #     - "Multimodal reasoning with text + image + video inputs"
+  #     - "Complex coding and analysis when 262K context is insufficient"
+  #   not_for: >
+  #     Simple short-context tasks where lower-cost local or smaller reasoning models
+  #     are sufficient.
+  #   provider: "qwen"
+  #   is_local: false
 
   # - id: "factorai/Qwen/Qwen3-Coder-Next-FP8"
   #   tier: "reasoning"
@@ -310,6 +310,31 @@ models:
       Simple queries or single-entity operations. Greetings and chat.
       Tasks with 1-5 linear tool calls.
 
+  - id: "moonshotai/kimi-k2.6"
+    tier: "reasoning+"
+    task_type: "reasoning+"
+    tool_calls: "2-8"
+    context_window: 262144
+    pricing:
+      input_per_1m_tokens:  "$0.60"
+      output_per_1m_tokens: "$2.80"
+    description: >
+      Kimi K2.6 by Moonshot AI. Next-generation multimodal model for long-horizon
+      coding, coding-driven UI/UX generation, and multi-agent orchestration.
+      Handles complex end-to-end coding tasks across Python, Rust, and Go.
+      Agent swarm architecture scales to hundreds of parallel sub-agents for
+      autonomous task decomposition. 262K context.
+    best_for:
+      - "Long-horizon coding tasks across multiple languages (Python, Rust, Go)"
+      - "Coding-driven UI/UX generation from prompts and visual inputs"
+      - "Multi-agent orchestration with autonomous task decomposition"
+      - "Complex end-to-end workflows requiring agent swarm architecture"
+      - "Production-ready interface generation from visual inputs"
+    not_for: >
+      Simple queries or single-entity operations. Greetings and chat.
+      Tasks with 1-5 linear tool calls. Budget-sensitive reasoning+ tasks
+      where K2.5 offers similar capability at lower cost.
+
   # - id: "moonshotai/kimi-k2.6"
   #   tier: "reasoning+"
   #   task_type: "reasoning+"
@@ -359,7 +384,7 @@ models:
 # FALLBACK MODEL
 # Used when the classifier cannot determine the tier with confidence.
 # =============================================================================
-default_model: "qwen/qwen3.6-27b"
+default_model: "moonshotai/kimi-k2.6"
 
 
 # =============================================================================
